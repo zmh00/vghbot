@@ -9,10 +9,11 @@ from ctypes import windll
 import json
 import sys
 import subprocess
-import pygsheets
+
 import pandas
 import datetime
 
+from pathlib import Path
 import gsheet
 
 # 製作EXE => 需要加上google json
@@ -1397,7 +1398,7 @@ def confirm(mode=0):
 #     row_list.sort()
 
 #     return df.iloc[row_list, :]  # 手動模式會回傳date_final=None
-gc = gsheet.GsheetClient()
+
 
 
 def gsheet_acc(id_list: list[str]):
@@ -1453,7 +1454,7 @@ def gsheet_iol_search_term(iol_list: list[str]):
     iol_search_dict = {}
     if type(iol_list) is not list:
         iol_list = [iol_list]
-    df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_IOL, case_insensitive=False)
+    df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_IOL, column_uppercase=False)
 
     for iol in iol_list:
         found = 0
@@ -1618,7 +1619,7 @@ def gsheet_schedule_cata(config_schedule):
     '''
     auto.Logger.WriteLine(f"== ID:{config_schedule['ID']}|SPREADSHEET:{config_schedule['SPREADSHEET']}|WORKSHEET:{config_schedule['WORKSHEET']} ==", auto.ConsoleColor.Yellow)
     while(1):
-        df = gc.get_df_select(gsheet.GSHEET_SPREADSHEET, config_schedule['WORKSHEET'], case_insensitive=False, format_string=False) # FIXME 真的要讓case_insensitive=False, format_string=False?
+        df = gc.get_df_select(gsheet.GSHEET_SPREADSHEET, config_schedule['WORKSHEET'], column_uppercase=False, format_string=False) # FIXME 真的要讓case_insensitive=False, format_string=False?
         # print dataframe將原始的時間去除
         print(df.reset_index()[[config_schedule['COL_DATE'], config_schedule['COL_HISNO'], config_schedule['COL_NAME'], config_schedule['COL_LENSX'], config_schedule['COL_IOL']]])
         check = input('Confirm the above-mentioned information(yes:Enter|no:n)? ')
@@ -1632,7 +1633,7 @@ def gsheet_schedule_ivi(config_schedule):
     '''
     auto.Logger.WriteLine(f"== ID:{config_schedule['ID']}|SPREADSHEET:{config_schedule['SPREADSHEET']}|WORKSHEET:{config_schedule['WORKSHEET']} ==", auto.ConsoleColor.Yellow)
     while(1):
-        df = gc.get_df_select(gsheet.GSHEET_SPREADSHEET, config_schedule['WORKSHEET'], case_insensitive=False, format_string=False) # FIXME 真的要讓case_insensitive=False, format_string=False?
+        df = gc.get_df_select(gsheet.GSHEET_SPREADSHEET, config_schedule['WORKSHEET'], column_uppercase=False, format_string=False) # FIXME 真的要讓case_insensitive=False, format_string=False?
         print(df.reset_index()[[config_schedule['COL_HISNO'], config_schedule['COL_NAME'], config_schedule['COL_DIAGNOSIS'], config_schedule['COL_DRUGTYPE'], config_schedule['COL_CHARGE']]])
         check = input('Confirm the above-mentioned information(yes:Enter|no:n)? ')
         if check.strip() == '':
@@ -1861,69 +1862,34 @@ def main():
             # 暫存退出
             save()
 
-def load_config():
-    # load from local json if path existed
-    if os.path.exists(CONFIG_JSON_PATH):
-        auto.Logger.WriteLine(f"CONFIG_JSON_PATH EXISTS AND APPLY CONFIG FROM FILE", auto.ConsoleColor.Yellow)
-        with open(CONFIG_JSON_PATH, 'r', encoding='utf-8') as f:
-            tmp = json.load(fp=f)
-            for i in tmp: # update CONFIG
-                CONFIG[i] = tmp[i]
     
-    # Check if OPD_PATH exist
-    if os.path.exists(CONFIG['OPD_PATH']) == False:
-        auto.Logger.WriteLine(f"OPD_PATH NOT EXISTS: {CONFIG['OPD_PATH']}", auto.ConsoleColor.Red)
-        CONFIG['OPD_PATH'] = input("Please enter path of OPD system: ")
-
-    # Check if SERVICE_FILE exist
-    if (CONFIG.get('SERVICE_JSON', None) == None) and (os.path.exists(CONFIG['SERVICE_FILE']) == False):
-        auto.Logger.WriteLine(f"SERVICE_FILE NOT EXISTS: {CONFIG['SERVICE_FILE']}", auto.ConsoleColor.Red)
-        CONFIG['SERVICE_FILE'] = input("Please enter path of SERVICE_FILE: ")
-
-    def clean(datalist:list): # 清掉從google sheet上取得資料會有空白row的狀況
-        final_list = []
-        for i in datalist:
-            if i.strip() == '':
-                continue
-            else:
-                final_list.append(i)
-        if len(final_list) == 1:
-            return final_list[0]
-        return final_list
-
-    # load from web(gsheet)
-    df = df_from_gsheet(CONFIG['SPREADSHEET_CONFIG'], 'config_others', case_insensitive=False)
-    CONFIG['PROCESS_NAME'] = clean(df['PROCESS_NAME'].to_list())
-    CONFIG['SECTION_CATA'] = clean(df['SECTION_CATA'].to_list())
-    CONFIG['ROOM_CATA'] = clean(df['ROOM_CATA'].to_list())
-    CONFIG['SECTION_PROCEDURE'] = clean(df['SECTION_PROCEDURE'].to_list())
-    CONFIG['ROOM_PROCEDURE'] = clean(df['ROOM_PROCEDURE'].to_list())
-    CONFIG['SECTION_OPH'] = clean(df['SECTION_OPH'].to_list())
-    return CONFIG
-
-
-'''
-TEST_MODE = False
-GSHEET_SPREADSHEET = 'config_vghbot'
-GSHEET_WORKSHEET_SURGERY = 'set_surgery'
-GSHEET_WORKSHEET_IVI = 'set_ivi'
-GSHEET_WORKSHEET_TEMPLATE_OPNOTE = 'template_opnote'
-'''
-
+def search_opd_program():
+    p = Path()
+    if p.glob()
+    # 先在程式路徑下找 => 當打包後要注意打包後的路徑
+    # 桌面找
+    # 找不到引入CONFIG位置找
+    # CONFIG['OPD_PATH'] = input("Please enter path of OPD system: ")
+    pass
 
 TEST_MODE = False
-CONFIG_JSON_PATH = "config_bot_opd.json"
-SERVICE_JSON = None
-CONFIG = {
-    "OPD_PATH": "C:\\Users\\Public\\Desktop\\門診系統.appref-ms",
-    #如果有json字串會優先於file，權限問題通常用file
-    "SERVICE_JSON": SERVICE_JSON, 
-    "SERVICE_FILE": "vghbot-5fe0aba1d3b9.json",
-    "SPREADSHEET_CONFIG": "config_vgh_automation"
-}
+CONFIG = {}
+
+gc = gsheet.GsheetClient()
+CONFIG.update(gc.get_col_dict(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_CONFIG))
+
+# SERVICE_JSON = None
+# CONFIG = {
+#     "OPD_PATH": "C:\\Users\\Public\\Desktop\\門診系統.appref-ms",
+#     #如果有json字串會優先於file，權限問題通常用file
+#     "SERVICE_JSON": SERVICE_JSON, 
+#     "SERVICE_FILE": "vghbot-5fe0aba1d3b9.json",
+#     "SPREADSHEET_CONFIG": "config_vgh_automation"
+# }
+
 auto.uiautomation.SetGlobalSearchTimeout(10)  # 應該使用較長的timeout來防止電腦反應太慢，預設就是10秒
 auto.uiautomation.DEBUG_SEARCH_TIME = TEST_MODE 
-CONFIG = load_config()
+
 
 if __name__ == '__main__':
     if auto.IsUserAnAdmin():

@@ -42,10 +42,10 @@ class GsheetClient:
             print(f"Authorize failed!:{e}")
 
 
-    def get_df(self, spreadsheet, worksheet, format_string=True, case_insensitive=True):
+    def get_df(self, spreadsheet, worksheet, format_string=True, column_uppercase=False):
         '''
-        取得gsheet資料並轉成dataframe, 預設是全部轉成文字形態(format_string=True)處理+欄位名大寫處理(case_insensitive=True)
-        Input: spreadsheet, worksheet, format_string=True, case_insensitive=True
+        取得gsheet資料並轉成dataframe, 預設是全部轉成文字形態(format_string=True)處理
+        Input: spreadsheet, worksheet, format_string=True, column_uppercase=False
         '''
         ssheet = self.client.open(spreadsheet)
         wsheet = ssheet.worksheet_by_title(worksheet)
@@ -53,18 +53,18 @@ class GsheetClient:
         # has_header=True: 第一列當作header; numerize=False: 不要轉化數字; include_tailing_empty=False: 不讀取每一row後面空白Column資料
         if format_string:
             df = df.astype('string') #將所有dataframe資料改成用string格式處理，新的格式比object更精準
-        if case_insensitive:
+        if column_uppercase:
             df.columns = df.columns.str.upper() #將所有的columns name改成大寫 => case insensitive
         return df
 
 
-    def get_df_select(self, spreadsheet, worksheet, format_string=True, case_insensitive=True):
+    def get_df_select(self, spreadsheet, worksheet, format_string=True, column_uppercase=False):
         '''
         透過get_df取得gsheet資料並轉成dataframe
         並讓使用者選擇指定的row number，(-)表示連續範圍 (,)做分隔
         '''
         # get_df取得gsheet資料
-        df = self.get_df(spreadsheet=spreadsheet, worksheet=worksheet, format_string=format_string, case_insensitive=case_insensitive)
+        df = self.get_df(spreadsheet=spreadsheet, worksheet=worksheet, format_string=format_string, column_uppercase=column_uppercase)
         
         # 使用者輸入選擇
         row_list_input = input("(-)表示連續範圍 (,)做分隔\n請選擇gsheet列碼: ")
@@ -88,7 +88,7 @@ class GsheetClient:
         資料預設是全部轉成文字形態(format_string=True)處理，""case_sensitive""模式
         '''
         result_dict = {}
-        df = self.get_df(spreadsheet = spreadsheet, worksheet = worksheet, case_insensitive=False)
+        df = self.get_df(spreadsheet = spreadsheet, worksheet = worksheet, column_uppercase=False)
 
         # 將 column內部有的空白cell清除
         column_names = df.columns

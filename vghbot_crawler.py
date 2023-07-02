@@ -8,16 +8,7 @@ import urllib.parse
 class VghCrawler(vghbot_login.Client):
     def __init__(self, login_id = None, login_psw = None, TEST_MODE=True):
         super().__init__(login_id=login_id, login_psw=login_psw, TEST_MODE=TEST_MODE)
-        if vghbot_login.is_notebook():
-            print("In notebook!")
-            checked = self.login_eip_selenium()
-        else:
-            checked = self.login_eip_playwright()
-        if checked != True:
-            print("登入失敗")
-            return None
-        self.web9_login_requests()
-        self.web9_app_requests('DRWEBAPP')
+        self.login_drweb()
     
 
     def patient_search(self, name='', drid='', hisno='', id='', ward='0'):
@@ -246,7 +237,7 @@ class VghCrawler(vghbot_login.Client):
         }
         response = self.session.get(url, params=payload)
         text = response.text()
-        soup = BeautifulSoup(text)
+        soup = BeautifulSoup(text, "html.parser")
         pre_tags = soup.find_all('pre')
         
         # Find the section containing the table after "用藥記錄"
@@ -457,9 +448,80 @@ class VghCrawler(vghbot_login.Client):
     #     '''
     #     pass
 
-    # def op_schedule(self):
-    #     pass
+    def op_schedule_list_doc(self, date, doc):
+        '''
+        回傳手術排程，透過日期(民國格式:1120702)+醫師燈號(4102)
+        '''
+        url = 'https://web9.vghtpe.gov.tw/ops/opb.cfm'
+        payload_doc = {
+            'action': 'findOpblist',
+            'type': 'opbmain',
+            'qry': doc, # '4102',
+            'bgndt': date, # '1120703',
+            '_': int(time.time()*1000)
+        }
+        response = self.session.get(url, params=payload_doc)
+        df = pd.read_html(response.text)[0]
+        df = df.astype('string')
+        soup = BeautifulSoup(response.text, "html.parser")
+        link_list = soup.find_all('button', attrs={'data-target':"#myModal"})
+        df['link'] = [l['data-url'] for l in link_list]
+        return df
 
+    def op_schedule_list_section(self, date, section):
+        '''
+        回傳手術排程，透過日期(民國格式:1120702)+部門(OPH)
+        '''
+        url = 'https://web9.vghtpe.gov.tw/ops/opb.cfm'
+        payload_sect = {
+            'action': 'findOpblist',
+            'type': 'opbsect',
+            'qry': section, # 'oph'
+            'bgndt': date, # '1120702'
+            '_': int(time.time()*1000)
+        }
+        response = self.session.get(url, params=payload_sect)
+        df = pd.read_html(response.text)[0]
+        df = df.astype('string')
+        soup = BeautifulSoup(response.text, "html.parser")
+        link_list = soup.find_all('button', attrs={'data-target':"#myModal"})
+        df['link'] = [l['data-url'] for l in link_list]
+        return df
+    
+    def op_schedule_detail(self, schedule_df: pd.DataFrame, hisno: str):
+        df_dict = schedule_df.loc[ (schedule_df.loc[:,'病歷號']==hisno), ['病歷號', '姓名', '手術日期', '手術時間', '病歷號', 'link']].to_dict('records')[0]
+        name =  df_dict['姓名']
+        op_date = df_dict['手術日期']
+        op_time = df_dict['手術時間']
+        link_url = df_dict['link']
+
+        base_url = 'https://web9.vghtpe.gov.tw'
+        response = self.session.get(base_url+link_url)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        side = soup.select_one('table > tbody > tr:nth-child(12) > td:nth-child(2)').string # TODO 改成部位:的下一個sibling?
+        if side == '右側':
+            side = 'R'
+        elif side == '左側':
+            side = 'L'
+        elif side == '雙側':
+            side = 'B'
+
+        result = {
+            'hisno': hisno,
+            'name': name,
+            'op_room': soup.select_one('table > tbody > tr:nth-child(4) > td:nth-child(6)').string,
+            'op_date': op_date,
+            'op_time': op_time,
+            'op_sect': soup.select_one('#OPBSECT')['value'].strip(),
+            'op_bed': soup.select_one('table > tbody > tr:nth-child(1) > td:nth-child(6)').string.strip(' -'), # TODO 改成病房床號:的下一個sibling?
+            'op_anesthesia': soup.select_one('#opbantyp')['value'], 
+            'op_side': side,  
+        }
+
+        return result
+        
+    
     # def op_schedule_patient(self):
     #     pass
 
@@ -474,3 +536,6 @@ class VghCrawler(vghbot_login.Client):
     #     上傳掃描病歷
     #     '''
     #     pass
+
+if __name__=='__main__':
+    c = VghCrawler('DOC4123J','S00000000')

@@ -1,3 +1,17 @@
-/vghbot-5fe0aba1d3b9.json
-/vghbot_note.log
-/__pycache__
+
+# txtx file
+*.txt
+
+# zip file
+*.zip
+
+# directory
+/*/
+
+# icon
+*.ico
+*.png
+
+# pyinstaller spec
+*.manifest
+*.spec
