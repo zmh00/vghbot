@@ -11,6 +11,7 @@ import warnings
 # vghbot library
 import gsheet
 import vghbot_login
+import updater_cmd
 
 class OPNote():
     def __init__(self, webclient, config):
@@ -702,12 +703,22 @@ NOTE_TRANSFORM_IVIDISTANCE = {  # 如果都不符就輸出3.5-4mm
 
 
 TEST_MODE = False
+UPDATER_OWNER = 'zmh00'
+UPDATER_REPO = 'vghbot'
+UPDATER_FILENAME = 'op'
+UPDATER_VERSION_TAG = 'v1.0'
+
 if __name__ == '__main__':
     if TEST_MODE:
         print("##############測試模式##############\n")
     else:
         warnings.simplefilter("ignore")
+        # Check if the version is the latest
+        u = updater_cmd.Updater_github(UPDATER_OWNER, UPDATER_REPO, UPDATER_FILENAME, UPDATER_VERSION_TAG)
+        if u.start() == False:
+            exit()
     
+
     # 選擇CATA|IVI mode
     while True:
         mode = input("Choose the OP Note mode (1:SURGERY | 2:IVI | 0:EXIT): ")
@@ -764,147 +775,3 @@ if __name__ == '__main__':
                         print("!!選擇錯誤!!\n")
                 else:  # 等於0 => 退到上一層
                     break
-
-'''
-config_dict = {
-    '1': {
-        "BOT":"IVI",
-        "SERVICE_FILE":"vghbot-5fe0aba1d3b9.json",
-        "SPREADSHEET": "OP-4053周昱百",
-        "WORKSHEET": "IVI",
-        "VS_NAME": "周昱百",
-        "VS_CODE": 4053,
-        "R_NAME": "鄭明軒",
-        "R_CODE": 4123,
-        "DATE_PATTERN": "%Y/%m/%d",
-        "COL_DATE": "時間",
-        "COL_HISNO": "病歷號",
-        "COL_NAME": "姓名",
-        "COL_DIAGNOSIS": "診斷",
-        "COL_SIDE": "側別",
-        "COL_DRUGTYPE": "藥物種類",
-        "COL_CHARGE": "收費",
-        "COL_OTHER_TREATMENT": "STK/AC paracentesis",
-        "COL_OP1": "Note_OP1",
-        "COL_OP2": "Note_OP2",
-        "COL_PHAKIC": "Phakic",
-        "OP_INTERVAL": 5,
-        "OP_START": "0900",
-        "TEMPLATE":
-            '1. Under LA, the $TRANSFORMED_SIDE eye was prepared and disinfected as usual.\n'
-            '2. IVI was performed via pars plana $TRANSFORMED_DISTANCE(mm) from conjunctival limbus.\n'
-            '3. Check bleeding with the cautery.\n'
-            '4. The patient understood the whole procedures well.\n'
-            'Complications: Nil'
-    },
-    '2': {
-        "BOT":"CATA",
-        "SERVICE_FILE":"vghbot-5fe0aba1d3b9.json",
-        "SPREADSHEET": "OP-4053周昱百",
-        "WORKSHEET": "OP",
-        "VS_NAME": "周昱百",
-        "VS_CODE": 4053,
-        "R_NAME": "鄭明軒",
-        "R_CODE": 4123,
-        "DATE_PATTERN": "%Y/%m/%d",
-        "COL_DATE": "時間",
-        "COL_HISNO": "病歷號",
-        "COL_NAME": "姓名",
-        "COL_DIAGNOSIS": "診斷",
-        "COL_SIDE": "側別",
-        "COL_OP": "手術",
-        "COL_LENSX": "LenSx",
-        "COL_IOL": "IOL",
-        "COL_FINAL": "Final",
-        "COL_SN": "SN",
-        "COL_COMPLICATIONS": "Complications",
-        "COL_CDE": "CDE",
-        "TEMPLATE":
-            '1. After local anesthesia, $TRANSFORMED_SIDE eye was sterilized and draped.\n'
-            '2. Moderated and severe lens opacity was identified under microscopy through illumination.\n' 
-            '3. The upper and lower eyelids were opened with eyelid speculum.\n'
-            '4. A temporal corneal incision was made with phaco-knife and then viscoelastic material was injected to the anterior chamber.\n'
-            '5. Continous curvilinear anterior capsulorrhexis was performed with a capsular forceps. Hydrodissection of the lens capsule from cortex completely with resultant fluid waves seen.\n'
-            '6. Side-port was made with 7515 bever knife over limbus. Ultrasonic phaco-tip was inserted into the anterior chamber and applicated for cataract extraction with assistance of a phaco-chopper.\n'
-            '7. Residual cortex was removed from the capsular bag using IA.\n'
-            '8. The viscoelastic material was injected into the capsular bag.\n'
-            '9. A posterior chamber intraocular lens was inserted into the bag.\n'
-            '10.Viscoelastic material was washed out with I/A irrigator. The wound was closed with stromal hydration.\n'
-            '11.The patient stood the whole procedure well.\n\n'
-            'Complication: $COL_COMPLICATIONS\n'
-            '$DETAILS_OF_IOL',
-        "TEMPLATE_LENSX":
-            "1. After local anesthesia, Continuous curvilinear anterior capsulorrhexis of $TRANSFORMED_SIDE eye was performed with Lensx Femtosecond laser.\n"
-            "2. Patient's eye was sterilized and draped as regular routine.\n"
-            "3. Moderated and severe lens opacity was identified under microscopy through illumination.\n"
-            "4. The upper and lower eyelids were opened with eyelid speculum.\n"
-            "5. A temporal corneal incision was made with phaco-knife and then viscoelastic material was injected to the anterior chamber.\n"
-            "6. Hydrodissection of the lens capsule from cortex completely with resultant fluid waves seen.\n"
-            "7. Ultrasonic phaco-tip was inserted into the anterior chamber and applicated for cataract extraction with assistance of a phaco-chopper. Side-port was made with 7515 bever knife over limbus.\n"
-            "8. Residual cortex was removed from the capsular bag using IA.\n"
-            "9. The viscoelastic material was injected into the anterior chamber and sulcus.\n"
-            "10. A posterior chamber intraocular lens was inserted into the bag.\n"
-            "11. Viscoelastic material was washed out with simcoe irrigator. The wound was closed with stromal hydration.\n"
-            "12.The patient stood the whole procedure well.\n\n"
-            "Complication: $COL_COMPLICATIONS\n"
-            "$DETAILS_OF_IOL",
-        "TEMPLATE_ECCE":"TEMPLATE_ECCE_TEST"
-    },
-    '3': {
-        "BOT":"CATA",
-        "SERVICE_FILE":"vghbot-5fe0aba1d3b9.json",
-        "SPREADSHEET": "OP-4081陳克華",
-        "WORKSHEET": "OP",
-        "VS_NAME": "陳克華",
-        "VS_CODE": 4081,
-        "R_NAME": "鄭明軒",
-        "R_CODE": 4123,
-        "DATE_PATTERN": "%Y/%m/%d",
-        "COL_DATE": "時間",
-        "COL_HISNO": "病歷號",
-        "COL_NAME": "姓名",
-        "COL_DIAGNOSIS": "診斷",
-        "COL_SIDE": "側別",
-        "COL_OP": "手術",
-        "COL_LENSX": "LenSx",
-        "COL_IOL": "IOL",
-        "COL_FINAL": "Final",
-        "COL_SN": "SN",
-        "COL_COMPLICATIONS": "Complications",
-        "TEMPLATE":
-            '1. After retrobulbar anesthesia, the $TRANSFORMED_SIDE eye was sterilized and draped.\n'
-            '2. Moderated and severe lens opacity was identified under microscopy through illumination.\n'
-            '3. The eyelids were separated with a specular. A temporal corneal incision was made with phaco knife and then viscoelastic material was injected to the anterior chamber.\n'
-            '4. Continous curvilinear anterior capsulorrhexis was performed with a bent 26 gauge needle and capsular forceps. And then hydrodissection of the lens capsule from cortex completely with resultant fluid waves seen.\n'
-            '5. Ultrasonic phaco-tip was inserted into the anterior chamber. Side port was made the 7515 bever knife over limbus and then viscoelastic material was injected to the anterior chamber. Phaco-tip was applicated for cataract extraction with assistance of a phaco-chopper.\n'
-            '6. Residual cortex was removed from the capsular bag using an IA.\n'
-            '7. Viscoelastic material was injected into the anterior chamber and capsular bag.\n'
-            '8. A posterior chamber intraocular lens was inserted into the capsular bag.\n'
-            '9. Viscoelastic material was aspirated with Simcore irrigator.\n'
-            '10.Miostate was injected into the anterior chamber to constrict the pupil and was then washed out. Stroma hydration was performed with BSS.\n'
-            '11.An inferior fornix subconjunctival injection of decadron 0.4 ml and gentamyc in 0.4ml was given.\n'
-            '12.The patient stood the whole procedure well.\n\n'
-            'Complication: $COL_COMPLICATIONS\n'
-            'DETAILS_OF_IOL',
-        "TEMPLATE_LENSX":
-            "1. After local anesthesia, Continuous curvilinear anterior capsulorrhexis of $TRANSFORMED_SIDE eye was performed with Lensx Femtosecond laser.\n"
-            "2. Patient's eye was sterilized and draped as regular routine.\n"
-            "3. Moderated and severe lens opacity was identified under microscopy through illumination.\n"
-            "4. The upper and lower eyelids were opened with eyelid speculum.\n"
-            "5. A temporal corneal incision was made with phaco-knife and then viscoelastic material was injected to the anterior chamber.\n"
-            "6. Hydrodissection of the lens capsule from cortex completely with resultant fluid waves seen.\n"
-            "7. Ultrasonic phaco-tip was inserted into the anterior chamber and applicated for cataract extraction with assistance of a phaco-chopper. Side-port was made with 7515 bever knife over limbus.\n"
-            "8. Residual cortex was removed from the capsular bag using IA.\n"
-            "9. The viscoelastic material was injected into the anterior chamber and sulcus.\n"
-            "10. A posterior chamber intraocular lens was inserted into the bag.\n"
-            "11. Viscoelastic material was washed out with simcoe irrigator. The wound was closed with stromal hydration.\n"
-            "12.The patient stood the whole procedure well.\n\n"
-            "Complication: $COL_COMPLICATIONS\n"
-            "DETAILS_OF_IOL",
-    },
-}
-import json
-with open("config_notebot.json","w") as f:
-    json.dump(config_dict, fp=f, ensure_ascii=False, indent=4)
-    
-'''
