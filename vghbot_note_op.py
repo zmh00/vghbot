@@ -870,7 +870,7 @@ TEST_MODE = False
 UPDATER_OWNER = 'zmh00'
 UPDATER_REPO = 'vghbot'
 UPDATER_FILENAME = 'op'
-UPDATER_VERSION_TAG = 'v1.0'
+UPDATER_VERSION_TAG = 'v2.0'
 
 if __name__ == '__main__':
     if TEST_MODE:
