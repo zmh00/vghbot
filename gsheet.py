@@ -1,5 +1,6 @@
 import pygsheets
 import pathlib
+import json
 
 SA_FILENAME_REGEX = 'vghbot*.json'
 GSHEET_SPREADSHEET = 'config_vghbot'
@@ -14,9 +15,10 @@ GSHEET_WORKSHEET_OVD = 'ovd'
 GSHEET_WORKSHEET_IOL = 'map_iol'
 GSHEET_WORKSHEET_CONFIG = 'config'
 
+SERVICE_ACCOUNT_JSON = None
 
 class GsheetClient:
-    def __init__(self, client_secret='', service_account_file=None, service_account_env_var=None, service_account_json=None) -> None:
+    def __init__(self, client_secret='', service_account_file=None, service_account_env_var=None, service_account_json=SERVICE_ACCOUNT_JSON) -> None:
         '''
         認證尋找順序: service_account_json >> service_account_env_var >> service_account_file >> 
         在同目錄下透過SA_FILENAME_REGEX搜尋的service_account_file >> client_secret >> client_secret預設的搜尋路徑

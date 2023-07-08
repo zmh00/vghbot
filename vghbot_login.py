@@ -257,7 +257,7 @@ class Client:
 
         # 取得myFunctions的內容 => 不同的帳號相同的app name會有不同的seqNo
         r = self.session.get("https://web9.vghtpe.gov.tw/Signon/myFunctions.jsp")
-        self.soup_myfunction = BeautifulSoup(r.text, "html.parser")
+        self.soup_myfunction = BeautifulSoup(r.text, "lxml")
         target = self.soup_myfunction.select("title")[0]
 
         if target.string.find('[Signon Main Function Screen]') == -1:  # 登入成功的判斷方式
@@ -313,11 +313,33 @@ class Client:
                 return False
 
 
-    def scheduler_login_webbrowser(self):
+    def scheduler_login(self, login_id=None, login_psw=None):
         '''
         登入排程系統
         '''
-        pass
+        if login_id is None or login_psw is None:
+            if self.login_id is None or self.login_psw is None:
+                login_id, login_psw = self.acquire_id_psw()
+            else:
+                login_id = self.login_id
+                login_psw = self.login_psw
+        
+        tURL = "http://10.97.235.122/Exm/HISLogin/CheckUserByID"
+        login_payload = {
+            'signOnID': login_id,
+            'signOnPassword': login_psw
+        }
+        r = self.session.post(tURL, data=login_payload)
+        if r.status_code == 200:
+            print("SCHEDULER: Login succeeded!")
+            self.login_id = login_id
+            self.login_psw = login_psw
+            return True
+        else:
+            print("SCHEDULER: Login failed!")
+            self.login_id = None
+            self.login_psw = None
+            return False
         
 
 

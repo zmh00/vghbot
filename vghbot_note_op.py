@@ -5,8 +5,10 @@ import time
 import pandas
 import re
 import logging
-import pprint
 import warnings
+import json
+import webbrowser
+import lxml
 
 # vghbot library
 import gsheet
@@ -53,8 +55,10 @@ class OPNote():
                 'post_data': post_data
             }
             '''
-            
-            self.date = check_opdate() # 取得時間
+            if 'date' in self.config.keys():
+                self.date = self.config['date']
+            else:
+                self.date = check_opdate() # 取得時間
             
             return True
 
@@ -63,9 +67,13 @@ class OPNote():
         num = 0
         # 針對每一人的資料處理歸檔(轉成dictionary)
         for hisno in self.extracted_df[self.config['COL_HISNO']]:  # 使用病歷號作為識別資料
+            print(f"組裝資料({num+1}):{hisno}", end='\r') # 標示進度
             if hisno.isnumeric(): # 跳過病歷號不全為數字的row + 空白row
                 data_web9op = self.get_data_web9op(hisno)  # 取得特定病人web9基本資料
-                data_opschedule = self.get_data_opschedule(hisno) # 取得特定病人手術排程資料
+                if self.config['BOT_MODE'] != "IVI": 
+                    data_opschedule = self.get_data_opschedule(hisno) # 取得特定病人手術排程資料，IVI沒有排程
+                else:
+                    data_opschedule = None
                 data_gsheet = self.get_data_gsheet(hisno)  # 取得特定病人google表單資料
 
                 post_data = self.fill_data(**{
@@ -86,8 +94,11 @@ class OPNote():
 
         if self.recheck_print():
             for hisno in self.data.keys():
-                res = self.post(self.data[hisno]["post_data"])
-                logger.info(f"新增記錄: {hisno} || {self.data[hisno]['data_web9op']['name']}")
+                if self.data[hisno]["post_data"] is None:
+                    logger.info(f"跳過記錄(資料不完整): {hisno} || {self.data[hisno]['data_web9op']['name']}")
+                else:
+                    res = self.post(self.data[hisno]["post_data"])
+                    logger.info(f"新增記錄: {hisno} || {self.data[hisno]['data_web9op']['name']}")
         logger.info(f"完成本次自動化作業，共{num}筆資料")
 
 
@@ -98,7 +109,7 @@ class OPNote():
             target_url = "https://web9.vghtpe.gov.tw/emr/OPAController"
         response = self.session.post(target_url, data=data)
         if TEST_MODE == True:
-            pprint.pprint(response.text)
+            print(response.text)
         return response
 
 
@@ -139,7 +150,7 @@ class OPNote():
             "b1": "新增"
         }
         r_new = self.session.post(target_url, data=payload)
-        soup_r_new = BeautifulSoup(r_new.text, "html.parser")
+        soup_r_new = BeautifulSoup(r_new.text, "lxml")
         pt_name = soup_r_new.find(attrs={"type": "hidden", "name": "name"}).get('value')
         # 擷取護理紀錄時間
         sel_opck = soup_r_new.select_one("select#sel_opck > option").get('value')  # 擷取護理師記錄
@@ -191,7 +202,7 @@ class OPNote():
             response = self.session.get(url, params=payload_doc)
             df = pandas.read_html(response.text)[0]
             df = df.astype('string')
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, "lxml")
             link_list = soup.find_all('button', attrs={'data-target':"#myModal"})
             df['link'] = [l['data-url'] for l in link_list]
             self.op_schedule_df = df
@@ -204,7 +215,7 @@ class OPNote():
 
         base_url = 'https://web9.vghtpe.gov.tw'
         response = self.session.get(base_url+link_url)
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(response.text, "lxml")
 
         side = soup.select_one('table > tbody > tr:nth-child(12) > td:nth-child(2)').string # TODO 改成部位:的下一個sibling?
         if side == '右側':
@@ -285,22 +296,16 @@ class OPNote():
 
         #### 特殊處理
         # 如果VS_CODE存在就使用新的CODE
-        if existandnotnone(data_gsheet, 'COL_VS_CODE'): 
-            code = data_gsheet['COL_VS_CODE']
-            post_data['man'] = code
-            post_data['mann'] = get_name_from_code(code, self.session)
-        else:
-            post_data['man'] = self.config['VS_CODE']
-            post_data['mann'] = self.config['VS_NAME']
+        post_data['man'] = self.config['VS_CODE'] # 手術組套所有病人為同一主治醫師
+        post_data['mann'] = self.config['VS_NAME'] # 主治醫師姓名在init會取得
 
-        # 如果R_CODE存在就使用新的CODE
+        # 如果R_CODE存在就使用新的CODE # FIXME 要有指定R欄位嗎?
         if existandnotnone(data_gsheet, 'COL_R_CODE'):
-            code = data_gsheet['COL_R_CODE']
-            post_data['ass1'] = code
-            post_data['ass1n'] = get_name_from_code(code, self.session)
+            post_data['ass1'] = data_gsheet['COL_R_CODE']
+            post_data['ass1n'] = get_name_from_code(data_gsheet['COL_R_CODE'], self.session)
         else:
             post_data['ass1'] = self.config['R_CODE']
-            post_data['ass1n'] = self.config['R_NAME']
+            post_data['ass1n'] = get_name_from_code(self.config['R_CODE'], self.session)
 
         # 判斷側別 => 判斷後存入新的變數 data_gsheet['OP_SIDE']
         if check_op_side(data_opschedule.get('op_side')) is not None: # 手術排程
@@ -321,61 +326,89 @@ class OPNote():
 
         # 判斷手術的組套種類 => 後續依此決定診斷碼/術後診斷/病歷文本
         data_gsheet['OP_TYPE'] = check_op_type(data_gsheet.get('COL_OP'))
+        if data_gsheet['OP_TYPE'] is None:
+            print(f"手術種類辨識失敗: {data_web9op.get('name')}")
+            return None
         if existandnotnone(data_gsheet, 'COL_LENSX'): # 如果有COL_LENSX欄位，且內部有資料就要換成'LENSX'
             data_gsheet['OP_TYPE'] = 'LENSX'
 
         # 處理診斷碼
         if data_gsheet['OP_TYPE'] == 'PHACO' or data_gsheet['OP_TYPE'] == 'ECCE' or data_gsheet['OP_TYPE'] == 'LENSX':
+            post_data['opanam1'] = "PHACOEMULSIFICATION + PC-IOL IMPLANTATION"
+            post_data['opacod1'] = "OPH 1342"
             if data_gsheet['OP_SIDE'] == "OD":
-                post_data['opanam1'] = "PHACOEMULSIFICATION + PC-IOL IMPLANTATION"
-                post_data['opacod1'] = "OPH 1342"
                 post_data['opaicd0'] = "08RJ3JZ"
                 post_data['opaicdnm0'] = "Replacement of Right Lens with Synthetic Substitute, Percutaneous Approach"
             elif data_gsheet['OP_SIDE'] == "OS":
-                post_data['opanam1'] = "PHACOEMULSIFICATION + PC-IOL IMPLANTATION"
-                post_data['opacod1'] = "OPH 1342"
                 post_data['opaicd0'] = "08RK3JZ"
                 post_data['opaicdnm0'] = "Replacement of Left Lens with Synthetic Substitute, Percutaneous Approach"
             elif data_gsheet['OP_SIDE'] == "OU":
-                post_data['opanam1'] = "PHACOEMULSIFICATION + PC-IOL IMPLANTATION"
-                post_data['opacod1'] = "OPH 1342"
                 post_data['opanam2'] = "PHACOEMULSIFICATION + PC-IOL IMPLANTATION"
                 post_data['opacod2'] = "OPH 1342"
                 post_data['opaicd0'] = "08RJ3JZ"
                 post_data['opaicdnm0'] = "Replacement of Right Lens with Synthetic Substitute, Percutaneous Approach"
                 post_data['opaicd1'] = "08RK3JZ"
                 post_data['opaicdnm1'] = "Replacement of Left Lens with Synthetic Substitute, Percutaneous Approach"
-        elif data_gsheet['OP_TYPE'] == 'VT': # TODO
+        elif data_gsheet['OP_TYPE'] == 'VT':
+            post_data['opanam1'] = "OCUTOME PARS PLANA VITRECTOMY ( V.T. ), COMPLICATED"
+            post_data['opacod1'] = "OPH 14791"
             if data_gsheet['OP_SIDE'] == "OD":
-                post_data['opanam1'] = "OCUTOME PARS PLANA VITRECTOMY ( V.T. ), COMPLICATED"
-                post_data['opacod1'] = "OPH 14791"
                 post_data['opaicd0'] = "08B43ZZ"
                 post_data['opaicdnm0'] = "Excision of Right Vitreous, Percutaneous Approach"
             elif data_gsheet['OP_SIDE'] == "OS":
-                post_data['opanam1'] = "OCUTOME PARS PLANA VITRECTOMY ( V.T. ), COMPLICATED"
-                post_data['opacod1'] = "OPH 14791"
                 post_data['opaicd0'] = "08B53ZZ"
                 post_data['opaicdnm0'] = "Excision of Left Vitreous, Percutaneous Approach"
             elif data_gsheet['OP_SIDE'] == "OU":
-                post_data['opanam1'] = "OCUTOME PARS PLANA VITRECTOMY ( V.T. ), COMPLICATED"
-                post_data['opacod1'] = "OPH 14791"
                 post_data['opanam2'] = "OCUTOME PARS PLANA VITRECTOMY ( V.T. ), COMPLICATED"
                 post_data['opacod2'] = "OPH 14791"
                 post_data['opaicd0'] = "08B43ZZ"
                 post_data['opaicdnm0'] = "Excision of Right Vitreous, Percutaneous Approach"
                 post_data['opaicd1'] = "08B53ZZ"
                 post_data['opaicdnm1'] = "Excision of Left Vitreous, Percutaneous Approach"
-        elif data_gsheet['OP_TYPE'] == 'TRABE': # TODO
-            pass
+        elif data_gsheet['OP_TYPE'] == 'TRABE':
+            post_data['opanam1'] = "TRABECULECTOMY + MITOMYCIN C SOAKING"
+            post_data['opacod1'] = "OPH 1265"
+            if data_gsheet['OP_SIDE'] == "OD":
+                post_data['opaicd0'] = "08123Z4"
+                post_data['opaicdnm0'] = "Bypass Right Anterior Chamber to Sclera, Percutaneous Approach"
+            elif data_gsheet['OP_SIDE'] == "OS":
+                post_data['opaicd0'] = "08133Z4"
+                post_data['opaicdnm0'] = "Bypass Left Anterior Chamber to Sclera, Percutaneous Approach"
+            elif data_gsheet['OP_SIDE'] == "OU":
+                post_data['opanam2'] = "TRABECULECTOMY + MITOMYCIN C SOAKING"
+                post_data['opacod2'] = "OPH 1265"
+                post_data['opaicd0'] = "08123Z4"
+                post_data['opaicdnm0'] = "Bypass Right Anterior Chamber to Sclera, Percutaneous Approach"
+                post_data['opaicd1'] = "08133Z4"
+                post_data['opaicdnm1'] = "Bypass Left Anterior Chamber to Sclera, Percutaneous Approach"
+        elif data_gsheet['OP_TYPE'] == 'BLEB':
+            post_data['opanam1'] = "SCLEROTOMY FOR GLAUCOMA"
+            post_data['opacod1'] = "OPH 1288"
+            if data_gsheet['OP_SIDE'] == "OD":
+                post_data['opaicd0'] = "08923ZZ"
+                post_data['opaicdnm0'] = "Drainage of Right Anterior Chamber, Percutaneous Approach"
+            elif data_gsheet['OP_SIDE'] == "OS":
+                post_data['opaicd0'] = "08933ZZ"
+                post_data['opaicdnm0'] = "Drainage of Left Anterior Chamber, Percutaneous Approach"
+            elif data_gsheet['OP_SIDE'] == "OU":
+                post_data['opanam2'] = "SCLEROTOMY FOR GLAUCOMA"
+                post_data['opacod2'] = "OPH 1288"
+                post_data['opaicd0'] = "08923ZZ"
+                post_data['opaicdnm0'] = "Drainage of Right Anterior Chamber, Percutaneous Approach"
+                post_data['opaicd1'] = "08933ZZ"
+                post_data['opaicdnm1'] = "Drainage of Left Anterior Chamber, Percutaneous Approach"
         
         # 處理術前診斷
         post_data['diagn'] = data_web9op.get("diagn")  # 抓排程內容 # TODO 換成刀表的診斷? 刀表比較沒有時間差問題?
         
         # 處理術後診斷(應該以google sheet為主，因為有些會有加打IVIA)
-        if existandnotnone(data_gsheet, 'COL_LENSX') and (data_gsheet['COL_OP'].upper().find('LEN') == -1):  # 判斷COL_LENSX有資料+COL_OP內沒有LEN(SX)關鍵字 => 術式要補上LENSX
+        post_data['diaga'] = f"Ditto s/p {data_gsheet['COL_OP']}"
+        # 特別處理Lensx欄位
+        if data_gsheet['OP_TYPE'] == 'LENSX':
             post_data['diaga'] = f"Ditto s/p LenSx+{data_gsheet['COL_OP']}"
-        else:
-            post_data['diaga'] = f"Ditto s/p {data_gsheet['COL_OP']}"
+        elif data_gsheet['OP_TYPE'] == 'PHACO' or data_gsheet['OP_TYPE'] == 'ECCE':
+            if existandnotnone(data_gsheet, 'COL_LENSX') and (data_gsheet['COL_OP'].upper().find('LEN') == -1):  # 判斷COL_LENSX有資料+COL_OP內沒有LEN(SX)關鍵字 => 術式要補上LENSX
+                post_data['diaga'] = f"Ditto s/p LenSx+{data_gsheet['COL_OP']}"
         
         # 確認術後診斷有側別
         if check_op_side(post_data['diaga']) is None:
@@ -389,13 +422,12 @@ class OPNote():
             &((df_template['R_CODE']==self.config['R_CODE']) | (df_template['R_CODE']=='0')),:
             ].sort_values(by =['VS_CODE','R_CODE'], axis=0, ascending=False)
         template = df_template_selected.iloc[0,3]
-    
-        if data_gsheet['OP_TYPE'] == 'PHACO' or data_gsheet['OP_TYPE'] == 'ECCE' or data_gsheet['OP_TYPE'] == 'LENSX':
-            
-            # 處理complications紀錄，如果沒有Complications輸出Nil
-            if not existandnotnone(data_gsheet, 'COL_COMPLICATIONS'):
-                data_gsheet['COL_COMPLICATIONS'] = 'Nil'
 
+        # 處理complications紀錄，如果沒有Complications輸出Nil
+        if not existandnotnone(data_gsheet, 'COL_COMPLICATIONS'):
+            data_gsheet['COL_COMPLICATIONS'] = 'Nil'
+
+        if data_gsheet['OP_TYPE'] == 'PHACO' or data_gsheet['OP_TYPE'] == 'ECCE' or data_gsheet['OP_TYPE'] == 'LENSX':
             # 處理IOL細節(IOL種類+度數+Target+SN)
             data_gsheet['DETAILS_OF_IOL'] = f"Style of IOL: {data_gsheet['COL_IOL']} F+{data_gsheet['COL_FINAL']}"
             # 若有Target加上
@@ -409,35 +441,37 @@ class OPNote():
             post_data['op2data'] = Template(template).substitute(data_gsheet)
 
         elif data_gsheet['OP_TYPE'] == 'VT': # TODO
-            pass
-            # post_data['op2data'] = Template(template).substitute(data_gsheet)
-        elif data_gsheet['OP_TYPE'] == 'TRABE': # TODO
-            pass
-            # post_data['op2data'] = Template(template).substitute(data_gsheet)
+            post_data['op2data'] = Template(template).substitute(data_gsheet)
+        elif data_gsheet['OP_TYPE'] == 'TRABE':
+            post_data['op2data'] = Template(template).substitute(data_gsheet)
+        elif data_gsheet['OP_TYPE'] == 'BLEB':
+            post_data['op2data'] = Template(template).substitute(data_gsheet)
 
 
         return post_data
 
 
     def recheck_print(self):  # 確認一次要處理的資料有沒有錯誤
+        print("", end='\r')
         print(f"手術紀錄日期: {self.date}")  # TODO 可能跨越多個日期??
         print(f"VS:{self.config['VS_CODE']}||R:{self.config['R_CODE']}")
         data = self.data
         t = list()
         # TODO 因為CATA/VT/TRABE是否要有不同
-        for hisno in data.keys(): 
-            t.append(
-                (
-                    hisno,
-                    data[hisno]['data_web9op']['name'],
-                    data[hisno]['data_gsheet']['OP_TYPE'],
-                    data[hisno]['data_gsheet']['COL_IOL'],
-                    data[hisno]['data_gsheet']['COL_FINAL'],
-                    data[hisno]['post_data']['diaga'],
-                    data[hisno]['data_gsheet']['COL_SN'],
-                    data[hisno]['data_gsheet']['COL_COMPLICATIONS'],
+        for hisno in data.keys():
+            if data[hisno]['post_data'] is not None: 
+                t.append(
+                    (
+                        hisno,
+                        data[hisno]['data_web9op']['name'],
+                        data[hisno]['data_gsheet']['OP_TYPE'],
+                        data[hisno]['data_gsheet']['COL_IOL'],
+                        data[hisno]['data_gsheet']['COL_FINAL'],
+                        data[hisno]['post_data']['diaga'],
+                        data[hisno]['data_gsheet']['COL_SN'],
+                        data[hisno]['data_gsheet']['COL_COMPLICATIONS'],
+                    )
                 )
-            )
         printed_df = pandas.DataFrame(t, columns=['病歷號', '姓名', '手術種類', 'IOL', 'Final', '術後診斷', 'SN', '併發症'])
         print(f"紀錄清單:\n{printed_df}")
 
@@ -460,13 +494,13 @@ class OPNote_IVI(OPNote):
         df_available = super().__init__(webclient, config)
         if df_available:
             self.op_start = datetime.strptime(self.config['OP_START'], "%H%M")
-            self.op_interval = timedelta(minutes=self.config['OP_INTERVAL'])
+            self.op_interval = timedelta(minutes=int(self.config['OP_INTERVAL']))
             self.start()
 
     def fill_data(self, **kwargs):
         data_web9op = kwargs.get('data_web9op')
         data_gsheet = kwargs.get('data_gsheet')
-        data_opschedule = kwargs.get('data_opschedule')
+        # data_opschedule = kwargs.get('data_opschedule')
         index = kwargs.get('num')
 
         # 填手術紀錄內容:
@@ -518,29 +552,32 @@ class OPNote_IVI(OPNote):
         if existandnotnone(data_gsheet, 'COL_VS_CODE'):
             code = data_gsheet['COL_VS_CODE']
             post_data['man'] = code
-            post_data['mann'] = get_name_from_code(code, self.session)
         else:
-            post_data['man'] = self.config['VS_CODE']
-            post_data['mann'] = self.config['VS_NAME']
+            code = input(f'請輸入病人{data_web9op.get("name")}主治醫師登號(4位數):')
+            post_data['man'] = code
+        post_data['mann'] = get_name_from_code(code, self.session)
 
         # 如果R_CODE存在就使用新的CODE
         if existandnotnone(data_gsheet, 'COL_R_CODE'):
-            code = data_gsheet['COL_R_CODE']
-            post_data['ass1'] = code
-            post_data['ass1n'] = get_name_from_code(code, self.session)
+            post_data['ass1'] = data_gsheet['COL_R_CODE']
+            post_data['ass1n'] = get_name_from_code(data_gsheet['COL_R_CODE'], self.session)
         else:
             post_data['ass1'] = self.config['R_CODE']
-            post_data['ass1n'] = self.config['R_NAME']
-
+            post_data['ass1n'] = get_name_from_code(self.config['R_CODE'], self.session)
 
         # 術前診斷:
         if existandnotnone(data_gsheet, 'COL_DIAGNOSIS') and existandnotnone(data_gsheet, 'COL_SIDE'):
             post_data['diagn'] = f"{data_gsheet['COL_DIAGNOSIS']} {data_gsheet['COL_SIDE']}"
         else:
-            raise Exception(f"資料輸入未完整!")
+            print(f"資料輸入未完整:{data_web9op.get('name')}")
+            return None
         
         # 術後診斷:
-        post_data['diaga'] = (f"Ditto s/p IVI-{data_gsheet['COL_DRUGTYPE']} {data_gsheet['COL_SIDE']}")
+        if existandnotnone(data_gsheet, 'COL_DRUGTYPE') and existandnotnone(data_gsheet, 'COL_SIDE'):
+            post_data['diaga'] = (f"Ditto s/p IVI-{data_gsheet['COL_DRUGTYPE']} {data_gsheet['COL_SIDE']}")
+        else:
+            print(f"資料輸入未完整:{data_web9op.get('name')}")
+            return None
         if existandnotnone(data_gsheet, 'COL_OTHER_TREATMENT'):
             post_data['diaga'] = post_data['diaga'] + f" + {data_gsheet['COL_OTHER_TREATMENT']}"
 
@@ -552,7 +589,7 @@ class OPNote_IVI(OPNote):
         df_template = self.gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_TEMPLATE_OPNOTE)
         df_template_selected = df_template.loc[ 
             (df_template['OP_TYPE']=='IVI')
-            &((df_template['VS_CODE']==self.config['VS_CODE']) | (df_template['VS_CODE']=='0'))
+            &((df_template['VS_CODE']==post_data['man']) | (df_template['VS_CODE']=='0'))
             &((df_template['R_CODE']==self.config['R_CODE']) | (df_template['R_CODE']=='0')), :
             ].sort_values(by =['VS_CODE','R_CODE'], axis=0, ascending=False)
         template = df_template_selected.iloc[0,3]
@@ -562,18 +599,25 @@ class OPNote_IVI(OPNote):
     
 
     def recheck_print(self):  # 確認一次要處理的資料有沒有錯誤
+        print("", end='\r')
         print(f"=================\n手術紀錄日期: {self.date}")
         print(f"手術開始: {self.config['OP_START']} 間隔:{self.config['OP_INTERVAL']} 分鐘")
         data = self.data
-        t = [(
-            hisno,
-            data[hisno]['post_data']['name'],
-            data[hisno]['post_data']['diagn'],
-            data[hisno]['post_data']['diaga'],
-            data[hisno]['post_data']['man'],
-            data[hisno]['post_data']['ass1']
-        ) for hisno in data.keys()]
-        printed_df = pandas.DataFrame(t, columns=['病歷號', '姓名', '診斷', '處置', "VS帳號", "R帳號"])
+        data_list = []
+        for hisno in data.keys():
+            if data[hisno]['post_data'] is not None:
+                data_list.append(
+                    (
+                        hisno,
+                        data[hisno]['post_data']['name'],
+                        data[hisno]['post_data']['diagn'],
+                        data[hisno]['post_data']['diaga'],
+                        data[hisno]['post_data']['man'],
+                        data[hisno]['post_data']['ass1']
+                    )
+                )
+        
+        printed_df = pandas.DataFrame(data_list, columns=['病歷號', '姓名', '診斷', '處置', "VS帳號", "R帳號"])
         print(f"紀錄清單:\n{printed_df}")
 
         mode = input("確認無誤(y/n) ").strip().lower()
@@ -611,7 +655,7 @@ def get_name_from_code(id_code, session):
 
 def check_opdate(default=None): # TODO 手術(除IVI)時間應該可以用排程系統抓取
     '''
-    預設為當日日期，允許使用者更改
+    預設為當日日期(民國格式)，允許使用者更改
     '''
     if default is None:
         default = str(datetime.today().year - 1911) + datetime.today().strftime("%m%d")  # 採用中華民國紀年，沒有指定就以當下時間
@@ -621,7 +665,7 @@ def check_opdate(default=None): # TODO 手術(除IVI)時間應該可以用排程
         return default
     else:
         while True:
-            if re.match(r"^1\d{6}$", date_final) is None:
+            if re.match(r"^1\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$", date_final) is None:
                 print("格式有誤，請重新輸入")
                 date_final = input(f"請更正手術日期[格式:{default}]: ")
             else:
@@ -646,6 +690,7 @@ def check_op_side(input_string:str):
     else:
         return None
     
+# 新增手術種類需要改這
 def check_op_type(input_string:str):
     '''
     偵測字串中為何種手術類別，回傳'phaco', 'ecce', 'lensx', 'vt', None
@@ -665,9 +710,128 @@ def check_op_type(input_string:str):
         return 'VT'
     elif input_string.upper().find('TRABE') > -1: # trabe
         return 'TRABE'
+    elif input_string.upper().find('BLEB') > -1: # trabe
+        return 'BLEB'
     else:
         return None
 
+
+def IVI_schedule_download(config, gclient):
+    '''
+    自動下載排程
+    '''
+    # 處理函數定義
+    def get_diagnosis(s):
+        check_list = ["AMD","PCV","RAP","mCNV","CRVO", "BRVO", "DME", "VH", "PDR", "NVG", "CME"]
+        for i in check_list:
+            if s.find(i) > -1:
+                return i
+        return ""
+
+    def get_side(s):
+        if s.find("OD")>-1:
+            return "OD"
+        elif s.find("OS")>-1:
+            return "OS"
+        elif s.find("OU")>-1:
+            return "OU"
+        else:
+            return ""
+
+    def get_drug(s):
+        final = ""
+        if s.find("STK") > -1:
+            final = final+"+STK"
+        if s.find("TPA") > -1:
+            final = "+TPA"+final
+        if (s.find("IVI-L") > -1) and (s.find("IVI-E") > -1):
+            return "Eylea"+final
+        if s.find("IVI-F") > -1:
+            return "Faricimab"+final
+        if s.find("IVI-B") > -1:
+            return "Beovu"+final
+        if s.find("IVI-A") > -1:
+            return "Avastin"+final
+        if s.find("IVI-L") > -1:
+            return "Lucentis"+final
+        if s.find("IVI-E") > -1:
+            return "Eylea"+final
+        if s.find("IVI-Ozu") > -1:
+            return "Ozurdex"+final
+        else:
+            return ""+final
+
+    def get_charge(s):
+        if s.find("NHI") > -1:
+            return "NHI"
+        elif s.find("drug f") > -1:
+            return "Drug-Free"
+        elif s.find("all f") > -1:
+            return "All-free"
+        elif s.find("SP-A") > -1:
+            return "SP-A"
+        elif s.find("SP-1") > -1:
+            return "SP-1"
+        elif s.find("SP-2") > -1:
+            return "SP-2"
+        elif (s.find("IVI-E") > -1) and (s.find("IVI-L") > -1):  #應該只有百哥在用?
+            return "L(E)"
+        else:
+            return ""
+    
+    # 自動獲取排程 # TODO
+    date = check_opdate()
+    vgh_client = vghbot_login.Client(TEST_MODE=TEST_MODE)
+    vgh_client.scheduler_login()
+    url = 'http://10.97.235.122/Exm/ExmQ010/ExmQ010_Read'
+    payload = {
+        'sort':'',
+        'group': '',
+        'filter': '',
+        'queryBeginDate': str(int(date[0:3])+1911)+date[3:],
+        'queryEndDate': str(int(date[0:3])+1911)+date[3:],
+        'scheduleID': 'CTOPHIVI',
+        'cancelYN': 'N',
+        'aheadScheduleYN': 'N',
+        'caseFrom': 'O',
+        'exmRoomID':'',
+        'schShiftNo':'',
+        'searchNRCode':'',
+        'SearchCriticalYN': 'N',
+        'SearchISOLYN': 'N'
+    }
+    res = vgh_client.session.post(url=url, data=payload)
+    res_json = json.loads(res.text)
+    res_df = pandas.DataFrame(res_json['Data'])
+    res_df = res_df[["PatNo", "PatNMC", "ScheduleName", "CreateID", "CreateName", "CombineSchExmItemName"]]
+    res_df.columns = [config['COL_HISNO'], config['COL_NAME'], '排程種類', '醫師登號', '醫師姓名', '排程內容']
+    
+    # 資料處理
+    res_df[config['COL_VS_CODE']] = res_df['醫師登號'].str[3:7]
+    res_df[config['COL_NAME']] = res_df[config['COL_NAME']].str.strip()
+    res_df[config['COL_DIAGNOSIS']] = res_df['排程內容'].apply(get_diagnosis)
+    res_df[config['COL_SIDE']] = res_df['排程內容'].apply(get_side)
+    res_df[config['COL_DRUGTYPE']] = res_df['排程內容'].apply(get_drug)
+    res_df[config['COL_DRUGTYPE']] = res_df[config['COL_DRUGTYPE']].str.lstrip('+')
+    res_df[config['COL_CHARGE']] = res_df['排程內容'].apply(get_charge)
+    df_output = res_df[[config['COL_VS_CODE'],config['COL_NAME'],config['COL_HISNO'],config['COL_DIAGNOSIS'],config['COL_SIDE'],config['COL_DRUGTYPE'],config['COL_CHARGE']]]
+
+    # 自動更新BOT
+    ssheet = gclient.client.open(config['SPREADSHEET'])
+    wsheet = ssheet.worksheet_by_title(config['WORKSHEET'])
+    wsheet.set_dataframe(df_output, 'A1', copy_index=False, nan='')
+
+    # 打開BOT讓使用者編輯
+    edge_path="C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+    webbrowser.register('edge', None, webbrowser.BackgroundBrowser(edge_path))
+    webbrowser.get('edge').open(wsheet.url)
+
+    # 且要有停頓讓使用者編輯完
+    while True:
+        check = input("是否已編輯完成: (y:是)")
+        if check.lower() == 'y':
+            return vgh_client, date
+        
 
 # Logging 設定
 logger = logging.getLogger()
@@ -713,6 +877,7 @@ if __name__ == '__main__':
         print("##############測試模式##############\n")
     else:
         warnings.simplefilter("ignore")
+        logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
         # Check if the version is the latest
         u = updater_cmd.Updater_github(UPDATER_OWNER, UPDATER_REPO, UPDATER_FILENAME, UPDATER_VERSION_TAG)
         if u.start() == False:
@@ -731,47 +896,56 @@ if __name__ == '__main__':
             if mode == '1':
                 #手術(白內障)紀錄模式
                 config['BOT_MODE'] = 'SURGERY'
+
                 gc = gsheet.GsheetClient()
-                df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_SURGERY)
+                df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_SURGERY) # 讀取config
+                while True:
+                    selected_col = ['INDEX','VS_CODE','SPREADSHEET','WORKSHEET']
+                    selected_df = df.loc[:, selected_col]
+                    selected_df.index +=1 # 讓index從1開始方便選擇
+                    selected_df.rename(columns={'INDEX':'組套名'}, inplace=True) # rename column
+                    # 印出現有組套讓使用者選擇
+                    print("\n=========================")
+                    print(selected_df) 
+                    print("=========================")
+                    selection = input("請選擇以上profile(0是退回): ")
+                    if selection != '0':
+                        if int(selection) in selected_df.index:
+                            # 與drweb連線
+                            webclient = vghbot_login.Client(TEST_MODE=TEST_MODE)
+                            webclient.login_drweb()
+
+                            # R_CODE以webclient登入帳密轉換
+                            r_code = webclient.login_id[3:7]
+                            config['R_CODE'] = r_code
+
+                            # 將選擇的組套匯入config
+                            config.update( df.loc[int(selection)-1,:].to_dict() )
+                            OPNote_SURGERY(webclient, config)
+                        else:
+                            print("!!選擇錯誤!!\n")
+                    else:  # 等於0 => 退到上一層
+                        break
+
             elif mode == '2':
                 #IVI紀錄模式
                 config['BOT_MODE'] = 'IVI'
-                #自動下載排程 # TODO
 
-                #自動更新BOT # TODO
-
-                #打開BOT讓使用者編輯 # TODO
-                
-                #重新讀取並送出
+                # 讀取config
                 gc = gsheet.GsheetClient()
                 df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_IVI)
-            while True:
-                selected_col = ['INDEX','VS_CODE','SPREADSHEET','WORKSHEET']
-                selected_df = df.loc[:, selected_col]
-                selected_df.index +=1 # 讓index從1開始方便選擇
-                selected_df.rename(columns={'INDEX':'組套名'}, inplace=True) # rename column
-                # 印出現有組套讓使用者選擇
-                print("\n=========================")
-                print(selected_df) 
-                print("=========================")
-                selection = input("請選擇以上profile(0是退回): ")
-                if selection != '0':
-                    if int(selection) in selected_df.index:
-                        # 與drweb連線
-                        webclient = vghbot_login.Client(TEST_MODE=TEST_MODE)
-                        webclient.login_drweb()
+                config.update( df.loc[(df.loc[:,'INDEX'].str.strip()=='0'),:].to_dict('records')[0] ) # IVI直接使用INDEX==0的組套
 
-                        # R_CODE以webclient登入帳密轉換
-                        r_code = webclient.login_id[3:7]
-                        config['R_CODE'] = r_code
+                # 自動下載排程
+                webclient, ivi_date = IVI_schedule_download(config=config, gclient=gc)
+                config['date'] = ivi_date # 先設定日期 => 後續不需要再輸入
+              
+                # 與drweb連線
+                webclient.login_drweb()
 
-                        # 將選擇的組套匯入config
-                        config.update( df.loc[int(selection)-1,:].to_dict() )
-                        if config['BOT_MODE'] == 'IVI': 
-                            OPNote_IVI(webclient, config)
-                        elif config['BOT_MODE'] == 'SURGERY':
-                            OPNote_SURGERY(webclient, config)
-                    else:
-                        print("!!選擇錯誤!!\n")
-                else:  # 等於0 => 退到上一層
-                    break
+                # R_CODE以webclient登入帳密轉換
+                r_code = webclient.login_id[3:7]
+                config['R_CODE'] = r_code
+
+                # 啟動IVI組套
+                OPNote_IVI(webclient, config)
