@@ -779,7 +779,7 @@ def IVI_schedule_download(config, gclient):
         else:
             return ""
     
-    # 自動獲取排程 # TODO
+    # 自動獲取排程
     date = check_opdate()
     vgh_client = vghbot_login.Client(TEST_MODE=TEST_MODE)
     vgh_client.scheduler_login()
@@ -819,6 +819,7 @@ def IVI_schedule_download(config, gclient):
     # 自動更新BOT
     ssheet = gclient.client.open(config['SPREADSHEET'])
     wsheet = ssheet.worksheet_by_title(config['WORKSHEET'])
+    wsheet.clear(start = 'A2')
     wsheet.set_dataframe(df_output, 'A1', copy_index=False, nan='')
 
     # 打開BOT讓使用者編輯
@@ -870,7 +871,7 @@ TEST_MODE = False
 UPDATER_OWNER = 'zmh00'
 UPDATER_REPO = 'vghbot'
 UPDATER_FILENAME = 'op'
-UPDATER_VERSION_TAG = 'v2.0'
+UPDATER_VERSION_TAG = 'v2.1'
 
 if __name__ == '__main__':
     if TEST_MODE:
