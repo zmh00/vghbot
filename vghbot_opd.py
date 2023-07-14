@@ -86,6 +86,30 @@ def captureimage(control = None, postfix = ''):
         path = f"{datetime.datetime.today().strftime('%Y%m%d_%H%M%S')}_{postfix}.png"
     c.CaptureToImage(path)
 
+
+def monitor_window(processId, search_from = None, depth=0, maxDepth=2):
+    '''
+    監控新視窗的產生
+    '''
+    if depth > maxDepth:
+        return [] # TODO
+    if search_from is None:
+        search_from = auto.GetRootControl()
+    target_list = []
+    t_start = time.perf_counter()
+    for control, depth in auto.WalkControl(search_from, maxDepth=1):
+        if (control.ProcessId == processId) and (control.ControlType==auto.ControlType.WindowControl):
+            if control.IsEnabled ==  True: # TODO 利用別的判斷方式? control.GetWindowPattern().WindowInteractionState
+                target_list.append(control)
+            else:
+                depth = depth + 1
+                l = monitor_window(processId=processId, search_from=control, depth=depth, maxDepth=maxDepth)
+                target_list.extend(l)
+    t_end = time.perf_counter()
+    print(f"監控第{depth}層以下共花費:{t_end-t_start}")
+    return target_list
+
+
 # FIXME 目前沒用
 def window_search_pid(pid, search_from=None, maxdepth=1, recursive=False, return_hwnd=False):
     '''
@@ -1360,89 +1384,44 @@ def confirm(mode=0):
 
 # ==== Googlespreadsheet 資料擷取與轉換
 
-# def df_from_gsheet(spreadsheet, worksheet, format_string=True, case_insensitive=True):
-#     '''
-#     取得gsheet資料並轉成dataframe, 預設是全部轉成文字形態(format_string=True)處理+小寫處理(case_insensitive=True)
-#     Input: spreadsheet, worksheet, format_string=True, case_insensitive=True
-#     '''
-#     if CONFIG.get('SERVICE_JSON', None) != None:
-#         client = pygsheets.authorize(service_account_json=CONFIG['SERVICE_JSON'])
-#     else:
-#         client = pygsheets.authorize(service_account_file=CONFIG['SERVICE_FILE'])
-
-#     ssheet = client.open(spreadsheet)
-#     wsheet = ssheet.worksheet_by_title(worksheet)
-#     df = wsheet.get_as_df(has_header=True, include_tailing_empty=False, numerize=False) 
-#     # has_header=True: 第一列當作header; numerize=False: 不要轉化數字; include_tailing_empty=False: 不讀取每一row後面空白Column資料
-#     if format_string:
-#         df = df.astype('string') #將所有dataframe資料改成用string格式處理，新的格式比object更精準
-#     if case_insensitive:
-#         df.columns = df.columns.str.lower() #將所有的columns name改成小寫 => case insensitive
-#     return df
-
-
-# def df_select_row(df: pandas.DataFrame):
-#     '''
-#     讓使用者選擇指定的row number，(-)表示連續範圍 (,)做分隔
-#     '''
-#     row_list_input = input("(-)表示連續範圍 (,)做分隔\n請輸入符合格式gsheet列碼: ")
-#     row_set = set()
-#     for i in row_list_input.split(','):
-#         if len(i.split('-')) > 1:  # 如果有範圍標示，把這段範圍加入set
-#             row_set.update(
-#                 range(int(i.split('-')[0]), int(i.split('-')[1]) + 1))
-#         else:
-#             row_set.add(int(i))
-#     # google spreadsheet的index是從1開始，所以df對應的相差一，此外還有一欄變成df的column headers，所以總共要減2
-#     row_list = [row - 2 for row in row_set]
-#     row_list.sort()
-
-#     return df.iloc[row_list, :]  # 手動模式會回傳date_final=None
-
-
-
-def gsheet_acc(id_list: list[str]):
+def gsheet_acc(dr_code: str) -> dict:
     '''
-    Input: list of short code of account. Ex:[4033,4123]
-    Output: return dictionary of {'account short code':['account','password']} pairs
+    Input: short code of account. Ex:4123
+    Output: return dictionary of {'ACCOUNT':...,'PASSWORD':...,'NAME':...} 
     '''
-    return_dict= {}
-    if type(id_list) is not list:
-        id_list = [id_list]
     df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_ACC)
-    for i in id_list:
-        i=str(i).lower()
-        selector = df['account'].str.contains(i, case = False)
-        selected_df = df.loc[selector,['account','password']]
-        if len(selected_df) == 0:
-            auto.Logger.WriteLine(f"NOT EXIST ACCOUNT: {i}")
-            continue
-        # TODO 沒有查詢到帳密紀錄的帳號要從return dict內移除嗎?
-        return_dict[i] = selected_df.iloc[0,:].to_list() #df變成series再輸出成list
-    return return_dict
+    dr_code = str(dr_code).upper()
+    selector = df['ACCOUNT'].str.contains(dr_code, case = False)
+    selected_df = df.loc[selector,:]
+    if len(selected_df) == 0: # 資料庫中沒有此帳密
+        auto.Logger.WriteLine(f"USER({dr_code}) NOT EXIST IN CONFIG", auto.ConsoleColor.Red)
+        login_id, login_psw = get_id_psw()
+        dr_code = login_id[3:7]
+        return dr_code, login_id, login_psw
+    elif len(selected_df) > 1:
+        auto.Logger.WriteLine(f"MORE THAN ONE RECORD: {dr_code}")
+
+    result = selected_df.iloc[0,:].to_dict() #df變成series再輸出成dict
+    return dr_code, result['ACCOUNT'], result['PASSWORD']
+    
 
 
-def gsheet_order_ovd(id_list: list[str]):
+def gsheet_ovd(dr_code: str) -> str:
     '''
-    Input: list of id. Ex:[4033,4123]
-    Output: return dictionary of {'id':'ovd'} pairs
+    Input: list of id. Ex:4123
+    Output: return ovd choice
     '''
-    return_dict= {}
-    if type(id_list) is not list:
-        id_list = [id_list]
     df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_OVD)
     
-    default = df.loc[df['id']=='0','order'].values[0]
+    default = df.loc[df['INDEX']=='0','ORDER'].values[0]
     
-    for i in id_list:
-        i=str(i).lower() # case insensitive and compare in string format
-        selector = (df['id'].str.lower()==i) # case insensitive and compare in string format
-        selected_df = df.loc[selector,'order']
-        if len(selected_df) == 0:
-            return_dict[i] = default #如果找不到資料使用預設的參數
-        else:
-            return_dict[i] = selected_df.values[0]
-    return return_dict
+    dr_code=str(dr_code).upper() # case insensitive and compare in string format
+    selector = (df['INDEX'].str.lower()==dr_code) # case insensitive and compare in string format
+    selected_df = df.loc[selector,'ORDER']
+    if len(selected_df) == 0:
+        return default # 如果找不到資料使用預設的參數
+    else:
+        return selected_df.values[0]
 
 
 def gsheet_iol_search_term(iol_list: list[str]):
@@ -1556,61 +1535,67 @@ def gsheet_drug(id_list: list[str]):
     return return_dict
 
 
-def gsheet_config_cata(id_list: list[str]):
+def gsheet_config_surgery(dr_code: str) -> dict:
     '''
-    取得config_cata的資料, 回傳{id: {column_name:value}, {...}}
+    取得set_surgery的資料, 回傳{column_name:value,...}
     '''
-    return_dict= {}
-    if type(id_list) is not list:
-        id_list = [id_list]
     df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_SURGERY)
     
-    for i in id_list:
-        i=str(i)
-        selector = (df['VS_CODE']==i) # TODO 考慮使用VS_CODE => 如果多筆VS_CODE怎辦?
-        selected_df = df.loc[selector,:]
-        if len(selected_df) == 0:
-            auto.Logger.WriteLine(f"NOT EXIST: {i} in {inspect.currentframe().f_code.co_name}", auto.ConsoleColor.Red) # 找不到資料
-        elif len(selected_df) > 1:
-            auto.Logger.WriteLine(f"MORE than 2 same ID", auto.ConsoleColor.Red) # 找不到資料
-            # TODO 未來處理可能加上讓使用者選擇功能，或是讓ID和VS_CODE不同
-        else:
-            return_dict[i] = selected_df.to_dict('records')[0]
-            
-            # 空值需要加入config_schedule? 
-            # 需要跳過ID這一欄位?
+    dr_code=str(dr_code).upper()
+    selected_df = df.loc[(df['VS_CODE']==dr_code),:]
 
-    return return_dict
+    if len(selected_df) == 0: # 找不到資料
+        auto.Logger.WriteLine(f"NOT EXIST: {dr_code} in {gsheet.GSHEET_SPREADSHEET}||{gsheet.GSHEET_WORKSHEET_SURGERY}", auto.ConsoleColor.Red) 
+    elif len(selected_df) == 1: # 一個選項
+        return selected_df.iloc[0,:].to_dict()
+    elif len(selected_df) > 1: # 多個選項
+        auto.Logger.WriteLine(f"==MORE than 2 same VS_CODE==", auto.ConsoleColor.Red) # 找不到資料
+        print("選項:\t組套名稱")
+        for i,index in enumerate(selected_df.loc[:,'INDEX']):
+            print(f"{i}:\t{index}")
+        choice = input("請輸入選項編號: ")
+        return selected_df.iloc[int(choice),:].to_dict()
+    else:
+        auto.Logger.WriteLine(f"Something Wrong in {inspect.currentframe().f_code.co_name}", auto.ConsoleColor.Red)
+    
+    return None
 
 
-def gsheet_config_ivi(id_list: list[str], default='0'):
+def gsheet_config_ivi(index: str):
     '''
-    取得config_ivi的資料, 回傳{id: {column_name:value}, {...}}
+    取得set_ivi的資料, 回傳{column_name:value,...}
     '''
-    return_dict= {}
-    if type(id_list) is not list:
-        id_list = [id_list]
     df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_IVI)
+    selected_df = df.loc[(df['INDEX']==str(index)),:]
 
-    for i in id_list:
-        i=str(i)
-        selector = (df['ID']==i) # 未來可以考慮還要使用ID還是乾脆VS_CODE?
-        selected_df = df.loc[selector,:]
-        if len(selected_df) == 0:
-            auto.Logger.WriteLine(f"NOT EXIST: {i} in {inspect.currentframe().f_code.co_name}", auto.ConsoleColor.Red) # 找不到資料
-            auto.Logger.WriteLine(f"USING DEFAULT for {i}", auto.ConsoleColor.Yellow)
-            selected_df = df.loc[(df['ID']==default),:]
-            return_dict[i] = selected_df.to_dict('records')[0]
-        elif len(selected_df) > 1:
-            auto.Logger.WriteLine(f"MORE than 2 same ID", auto.ConsoleColor.Red) # 找不到資料
-            # TODO 未來處理可能加上讓使用者選擇功能，或是讓ID和VS_CODE不同
-        else:
-            return_dict[i] = selected_df.to_dict('records')[0]
-            
-            # 空值需要加入config_schedule? 
-            # 需要跳過ID這一欄位?
+    if len(selected_df) == 0: # 找不到資料
+        auto.Logger.WriteLine(f"NOT EXIST: {index} in {gsheet.GSHEET_SPREADSHEET}||{gsheet.GSHEET_WORKSHEET_SURGERY}", auto.ConsoleColor.Red) 
+    elif len(selected_df) == 1: # 一個選項
+        return selected_df.iloc[0,:].to_dict()
+    elif len(selected_df) > 1: # 多個選項
+        auto.Logger.WriteLine(f"==MORE than 2 same INDEX==", auto.ConsoleColor.Red) # 找不到資料
+        print("選項:\t組套名稱")
+        for i,index in enumerate(selected_df.loc[:,'INDEX']):
+            print(f"{i}:\t{index}")
+        choice = input("請輸入選項編號: ")
+        return selected_df.iloc[int(choice),:].to_dict()
+    else:
+        auto.Logger.WriteLine(f"Something Wrong in {inspect.currentframe().f_code.co_name}", auto.ConsoleColor.Red)
+    
+    return None
 
-    return return_dict
+
+def gsheet_schedule_surgery(config_schedule): # TODO 未考慮完成
+    '''
+    (其他手術)依照config_schedule資訊取得對應的刀表內容且輸出讓使用者確認
+    '''
+    auto.Logger.WriteLine(f"== ID:{config_schedule['ID']}|SPREADSHEET:{config_schedule['SPREADSHEET']}|WORKSHEET:{config_schedule['WORKSHEET']} ==", auto.ConsoleColor.Yellow)
+    while(1):
+        df = gc.get_df_select(config_schedule['SPREADSHEET'], config_schedule['WORKSHEET'])
+        print(df.reset_index()[[config_schedule['COL_HISNO'], config_schedule['COL_NAME'], config_schedule['COL_DIAGNOSIS'], config_schedule['COL_OP']]])
+        check = input('Confirm the above-mentioned information(yes:Enter|no:n)? ')
+        if check.strip() == '':
+            return df
 
 
 def gsheet_schedule_cata(config_schedule):
@@ -1619,9 +1604,8 @@ def gsheet_schedule_cata(config_schedule):
     '''
     auto.Logger.WriteLine(f"== ID:{config_schedule['ID']}|SPREADSHEET:{config_schedule['SPREADSHEET']}|WORKSHEET:{config_schedule['WORKSHEET']} ==", auto.ConsoleColor.Yellow)
     while(1):
-        df = gc.get_df_select(gsheet.GSHEET_SPREADSHEET, config_schedule['WORKSHEET'], column_uppercase=False, format_string=False) # FIXME 真的要讓case_insensitive=False, format_string=False?
-        # print dataframe將原始的時間去除
-        print(df.reset_index()[[config_schedule['COL_DATE'], config_schedule['COL_HISNO'], config_schedule['COL_NAME'], config_schedule['COL_LENSX'], config_schedule['COL_IOL']]])
+        df = gc.get_df_select(config_schedule['SPREADSHEET'], config_schedule['WORKSHEET'])
+        print(df.reset_index()[[config_schedule['COL_HISNO'], config_schedule['COL_NAME'], config_schedule['COL_LENSX'], config_schedule['COL_IOL']]])
         check = input('Confirm the above-mentioned information(yes:Enter|no:n)? ')
         if check.strip() == '':
             return df
@@ -1633,12 +1617,12 @@ def gsheet_schedule_ivi(config_schedule):
     '''
     auto.Logger.WriteLine(f"== ID:{config_schedule['ID']}|SPREADSHEET:{config_schedule['SPREADSHEET']}|WORKSHEET:{config_schedule['WORKSHEET']} ==", auto.ConsoleColor.Yellow)
     while(1):
-        df = gc.get_df_select(gsheet.GSHEET_SPREADSHEET, config_schedule['WORKSHEET'], column_uppercase=False, format_string=False) # FIXME 真的要讓case_insensitive=False, format_string=False?
+        df = gc.get_df_select(config_schedule['SPREADSHEET'], config_schedule['WORKSHEET'])
         print(df.reset_index()[[config_schedule['COL_HISNO'], config_schedule['COL_NAME'], config_schedule['COL_DIAGNOSIS'], config_schedule['COL_DRUGTYPE'], config_schedule['COL_CHARGE']]])
         check = input('Confirm the above-mentioned information(yes:Enter|no:n)? ')
         if check.strip() == '':
             return df
-
+        
 
 def get_id_psw():    
     while(1):
@@ -1651,39 +1635,6 @@ def get_id_psw():
             break
     return login_id, login_psw
 
-def get_date(mode:str='0'):
-    '''
-    取得時間.mode=0(西元紀年)|mode=1(民國紀年)
-    '''
-    mode = str(mode)
-    if mode=='0':
-        date = datetime.datetime.today().strftime("%Y%m%d") # 西元紀年
-        while(1):
-            check = input(f"Confirm or Enter the new date (NOW: {date})? ")
-            if check.strip() == '':
-                auto.Logger.WriteLine(f"DATE: {date}", auto.ConsoleColor.Yellow)
-                return date
-            else:
-                if len(check)==8:
-                    auto.Logger.WriteLine(f"DATE: {check}", auto.ConsoleColor.Yellow)
-                    return check
-                else:
-                    auto.Logger.WriteLine("WRONG FORMAT INPUT", auto.ConsoleColor.Red)
-    elif mode=='1':
-        date = str(datetime.datetime.today().year-1911) + datetime.datetime.today().strftime("%m%d") # 民國紀年
-        while(1):
-            check = input(f"Confirm or Enter the new date (NOW: {date})? ")
-            if check.strip() == '':
-                auto.Logger.WriteLine(f"DATE: {date}", auto.ConsoleColor.Yellow)
-                return date
-            else:
-                if len(check)==7:
-                    auto.Logger.WriteLine(f"DATE: {check}", auto.ConsoleColor.Yellow)
-                    return check
-                else:
-                    auto.Logger.WriteLine("WRONG FORMAT INPUT", auto.ConsoleColor.Red)
-    else:
-        return False
 
 def get_date_today(mode:str='0'):
     '''
@@ -1700,21 +1651,24 @@ def get_date_today(mode:str='0'):
         return date
 
 
-
-
-# HOTKEY
-def hk_prescription_cata(stopEvent: Event):
-    with auto.UIAutomationInitializerInThread():
-        drug_list = gsheet_drug('0')['0']
-        select_prescription(drug_list)
-
-def hk_patientdata(stopEvent: Event):
-    with auto.UIAutomationInitializerInThread():
-        data = get_patient_data()
-        print(data)
+def search_opd_program(path_list, filename_list):
+    '''
+    搜尋路徑順序: 當前目錄=>桌面=>path_list位置找
+    '''
+    pathlib_list = [Path(), (Path.home()/'Desktop')] # 第一個為當前目錄，第二個為桌面
+    for path in path_list:
+        pathlib_list.append(Path(path))
+    for p in pathlib_list:
+        for filename in filename_list:
+            result_list = list(p.glob(f'*{filename}'))
+            if len(result_list) > 0:
+                return result_list[0]
 
 
 def main():
+    # 搜尋OPD程式位置
+    CONFIG['OPD_PATH'] = search_opd_program(CONFIG['OPD_PATH_LIST'], CONFIG['OPD_FILENAME_LIST'])
+
     # 選擇CATA|IVI mode
     mode = input("Choose the OPD program mode (1:CATA | 2:IVI | 0:hotkey): ")
     while(1):
@@ -1723,34 +1677,18 @@ def main():
             mode = input("Choose the OPD program mode (1:CATA | 2:IVI | 0:hotkey): ")
         else:
             break
-    
-    ##########################################################
-    if mode == '0': # 進入hotkey模式就會一直在回圈內，可能需要用另一個thread來跑?
-        thread = threading.currentThread()
-        auto.Logger.WriteLine(f"{thread.name}, {thread.ident}, MAIN", auto.ConsoleColor.Yellow)
-        auto.RunByHotKey({
-            (auto.ModifierKey.Control, auto.Keys.VK_1): hk_prescription_cata,
-            (auto.ModifierKey.Control, auto.Keys.VK_2): hk_patientdata,
-        }, waitHotKeyReleased=False)
-    ##########################################################
 
     # 輸入要操作OPD系統的帳密
-    acc_code = input("Please enter the short code of account (Ex:4123): ")
-    dict_acc = gsheet_acc(acc_code)
-    if len(dict_acc[acc_code])==0:
-        # CONFIG上沒有此帳號密碼登記
-        auto.Logger.WriteLine(f"USER({acc_code}) NOT EXIST IN CONFIG", auto.ConsoleColor.Red)
-        login_id, login_psw = get_id_psw()
-        acc_code = login_id[3:7]
-    else:
-        login_id, login_psw = dict_acc[acc_code]
+    dr_code = input("Please enter the short code of account (Ex:4123): ")
+    dr_code, login_id, login_psw = gsheet_acc(dr_code)
 
+    # 判斷程式運行與否
     running, pid = process_exists(CONFIG['PROCESS_NAME'])
 
     if mode == '1': # CATA
         # 使用者輸入: 獲取刀表+日期模式
-        config_schedule = gsheet_config_cata(acc_code)[acc_code]
-        date = get_date_today(config_schedule['DATE_MODE'])
+        config_schedule = gsheet_config_surgery(dr_code)
+        date = get_date_today(config_schedule['OPD_DATE_MODE'])
         df = gsheet_schedule_cata(config_schedule)
 
         # 開啟門診程式
@@ -1800,13 +1738,13 @@ def main():
             # 取得刀表iol資訊
             iol = df.loc[hisno, config_schedule['COL_IOL']].strip()
             # 取得該燈號常用OVD
-            ovd = gsheet_order_ovd(acc_code)[acc_code]
+            ovd = gsheet_ovd(dr_code)
             select_iol_ovd(iol=iol, ovd=ovd)
             # 修改order的side
             select_order_side_all(side)
             
             # 處理藥物
-            drug_list = gsheet_drug(acc_code)[acc_code]
+            drug_list = gsheet_drug(dr_code)[dr_code]
             drug_list = select_eyedrop_side(drug_list, side=side)
             select_prescription(drug_list)
 
@@ -1820,8 +1758,8 @@ def main():
     # FIXME 有些函數尚未更新
     elif mode == '2': # IVI 
         # 使用者輸入: 獲取刀表+日期模式
-        config_schedule = gsheet_config_ivi(acc_code)[acc_code]
-        date = get_date_today(config_schedule['DATE_MODE'])
+        config_schedule = gsheet_config_ivi(0) # 使用共用組套
+        date = get_date_today(config_schedule['OPD_DATE_MODE'])
         df = gsheet_schedule_ivi(config_schedule)
 
         # 開啟門診程式
@@ -1862,30 +1800,12 @@ def main():
             # 暫存退出
             save()
 
-    
-def search_opd_program():
-    p = Path()
-    if p.glob()
-    # 先在程式路徑下找 => 當打包後要注意打包後的路徑
-    # 桌面找
-    # 找不到引入CONFIG位置找
-    # CONFIG['OPD_PATH'] = input("Please enter path of OPD system: ")
-    pass
 
 TEST_MODE = False
 CONFIG = {}
 
 gc = gsheet.GsheetClient()
 CONFIG.update(gc.get_col_dict(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_CONFIG))
-
-# SERVICE_JSON = None
-# CONFIG = {
-#     "OPD_PATH": "C:\\Users\\Public\\Desktop\\門診系統.appref-ms",
-#     #如果有json字串會優先於file，權限問題通常用file
-#     "SERVICE_JSON": SERVICE_JSON, 
-#     "SERVICE_FILE": "vghbot-5fe0aba1d3b9.json",
-#     "SPREADSHEET_CONFIG": "config_vgh_automation"
-# }
 
 auto.uiautomation.SetGlobalSearchTimeout(10)  # 應該使用較長的timeout來防止電腦反應太慢，預設就是10秒
 auto.uiautomation.DEBUG_SEARCH_TIME = TEST_MODE 
