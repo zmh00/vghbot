@@ -30,7 +30,7 @@ class VghCrawler(vghbot_login.Client):
             'nametype': ''
         }
         response = self.session.post(url, data=payload)
-        table = pd.read_html(response.text, attrs={'id':'patlist'})[0]
+        table = pd.read_html(response.text, attrs={'id':'patlist'}, flavor='lxml')[0]
         return table # TODO 如果沒有找到會回傳甚麼?
 
 
@@ -118,7 +118,7 @@ class VghCrawler(vghbot_login.Client):
                 '_': int(time.time()*1000)
             }
             res = self.session.get(baseURL, params=payload)
-            table_list = pd.read_html(res.text, parse_dates=['門診日期'])
+            table_list = pd.read_html(res.text, parse_dates=['門診日期'], flavor='lxml')
             if len(table_list[0]) == 1 and table_list[0].iloc[0,0] == '看診清單':
                 return None
             return {date:table_list[0]}
@@ -156,7 +156,7 @@ class VghCrawler(vghbot_login.Client):
                 '_': int(time.time()*1000)
             }
             res = self.session.get(baseURL, params=payload)
-            table = pd.read_html(res.text, parse_dates=['掛號日期'], attrs={'id':'reglist'})[0]
+            table = pd.read_html(res.text, parse_dates=['掛號日期'], attrs={'id':'reglist'}, flavor='lxml')[0]
             return table
         else:
             table_list = [] # TODO 考慮轉成datafram將每個dataframe合併
@@ -177,7 +177,7 @@ class VghCrawler(vghbot_login.Client):
                     '_': int(time.time()*1000)
                 }
                 res = self.session.get(baseURL, params=payload2)
-                table = pd.read_html(res.text, attrs={'id':'regdetail'})[0]
+                table = pd.read_html(res.text, attrs={'id':'regdetail'}, flavor='lxml')[0]
                 table_list.append(table)
             return table_list
 
@@ -193,7 +193,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table = pd.read_html(response.text, attrs={'id':'opdlist'})[0]
+        table = pd.read_html(response.text, attrs={'id':'opdlist'}, flavor='lxml')[0]
         if '無門診' in table.iloc[0,0]:
             table = None
 
@@ -205,7 +205,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table2 = pd.read_html(response.text, attrs={'id':'opdlist01'})[0]
+        table2 = pd.read_html(response.text, attrs={'id':'opdlist01'}, flavor='lxml')[0]
         if '無門診' in table2.iloc[0,0]:
             table2 = None
 
@@ -242,11 +242,11 @@ class VghCrawler(vghbot_login.Client):
         
         # Find the section containing the table after "用藥記錄"
         section = soup.find('legend', text='[用藥記錄]').find_parent('fieldset')
-        drugs = pd.read_html(section.text)
+        drugs = pd.read_html(section.text, flavor='lxml')
 
         # Find the section containing the table after "用藥記錄"
         section = soup.find('legend', text='[門診醫囑]').find_parent('fieldset')
-        orders = pd.read_html(section.text)
+        orders = pd.read_html(section.text, flavor='lxml')
 
         data = {
             'S':pre_tags[0].get_text(),
@@ -271,7 +271,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table = pd.read_html(response.text, attrs={'id':'opnlist'})[0]
+        table = pd.read_html(response.text, attrs={'id':'opnlist'}, flavor='lxml')[0]
         return table
     
 
@@ -303,7 +303,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table = pd.read_html(response.text, attrs={'id':'admlist'})[0]
+        table = pd.read_html(response.text, attrs={'id':'admlist'}, flavor='lxml')[0]
         return table
     
 
@@ -336,7 +336,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table = pd.read_html(response.text, attrs={'id':'caselist'})[0]
+        table = pd.read_html(response.text, attrs={'id':'caselist'}, flavor='lxml')[0]
         return table
 
 
@@ -356,7 +356,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table = pd.read_html(response.text, attrs={'id':'udorder'})[0]
+        table = pd.read_html(response.text, attrs={'id':'udorder'}, flavor='lxml')[0]
         return table
 
 
@@ -371,7 +371,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table = pd.read_html(response.text)[0]
+        table = pd.read_html(response.text, flavor='lxml')[0]
         return table
     
 
@@ -386,7 +386,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload)
-        table = pd.read_html(response.text, attrs={'id':'cpslist'})[0]
+        table = pd.read_html(response.text, attrs={'id':'cpslist'}, flavor='lxml')[0]
         return table
 
 
@@ -461,7 +461,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload_doc)
-        df = pd.read_html(response.text)[0]
+        df = pd.read_html(response.text, flavor='lxml')[0]
         df = df.astype('string')
         soup = BeautifulSoup(response.text, "html.parser")
         link_list = soup.find_all('button', attrs={'data-target':"#myModal"})
@@ -481,7 +481,7 @@ class VghCrawler(vghbot_login.Client):
             '_': int(time.time()*1000)
         }
         response = self.session.get(url, params=payload_sect)
-        df = pd.read_html(response.text)[0]
+        df = pd.read_html(response.text, flavor='lxml')[0]
         df = df.astype('string')
         soup = BeautifulSoup(response.text, "html.parser")
         link_list = soup.find_all('button', attrs={'data-target':"#myModal"})

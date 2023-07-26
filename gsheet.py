@@ -12,10 +12,10 @@ GSHEET_WORKSHEET_TEMPLATE_OPNOTE = 'template_opnote'
 GSHEET_WORKSHEET_ACC = 'account'
 GSHEET_WORKSHEET_DRUG = 'drug'
 GSHEET_WORKSHEET_OVD = 'ovd'
-GSHEET_WORKSHEET_IOL = 'map_iol'
+GSHEET_WORKSHEET_IOL = 'iol'
 GSHEET_WORKSHEET_CONFIG = 'config'
 
-SERVICE_ACCOUNT_JSON = None
+SERVICE_ACCOUNT_JSON = ""
 
 class GsheetClient:
     def __init__(self, client_secret='', service_account_file=None, service_account_env_var=None, service_account_json=SERVICE_ACCOUNT_JSON) -> None:

@@ -381,7 +381,7 @@ class OPNote():
                 post_data['opaicdnm0'] = "Bypass Right Anterior Chamber to Sclera, Percutaneous Approach"
                 post_data['opaicd1'] = "08133Z4"
                 post_data['opaicdnm1'] = "Bypass Left Anterior Chamber to Sclera, Percutaneous Approach"
-        elif data_gsheet['OP_TYPE'] == 'BLEB':
+        elif data_gsheet['OP_TYPE'] == 'BLEB' or data_gsheet['OP_TYPE'] == 'NEEDLING':
             post_data['opanam1'] = "SCLEROTOMY FOR GLAUCOMA"
             post_data['opacod1'] = "OPH 1288"
             if data_gsheet['OP_SIDE'] == "OD":
@@ -710,8 +710,10 @@ def check_op_type(input_string:str):
         return 'VT'
     elif input_string.upper().find('TRABE') > -1: # trabe
         return 'TRABE'
-    elif input_string.upper().find('BLEB') > -1: # trabe
+    elif input_string.upper().find('BLEB') > -1: # bleb
         return 'BLEB'
+    elif input_string.upper().find('NEEDLING') > -1: # needling
+        return 'NEEDLING'
     else:
         return None
 
@@ -871,7 +873,7 @@ TEST_MODE = False
 UPDATER_OWNER = 'zmh00'
 UPDATER_REPO = 'vghbot'
 UPDATER_FILENAME = 'op'
-UPDATER_VERSION_TAG = 'v2.1'
+UPDATER_VERSION_TAG = 'v2.2'
 
 if __name__ == '__main__':
     if TEST_MODE:
