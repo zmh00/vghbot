@@ -9,6 +9,7 @@ import warnings
 import json
 import webbrowser
 import lxml
+import sys
 
 # vghbot library
 import gsheet
@@ -884,7 +885,7 @@ if __name__ == '__main__':
         # Check if the version is the latest
         u = updater_cmd.Updater_github(UPDATER_OWNER, UPDATER_REPO, UPDATER_FILENAME, UPDATER_VERSION_TAG)
         if u.start() == False:
-            exit()
+            sys.exit()
     
 
     # 選擇CATA|IVI mode
