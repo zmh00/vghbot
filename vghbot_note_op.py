@@ -419,8 +419,8 @@ class OPNote():
         df_template = self.gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_TEMPLATE_OPNOTE)
         df_template_selected = df_template.loc[ 
             (df_template['OP_TYPE']==data_gsheet['OP_TYPE'])
-            &((df_template['VS_CODE']==self.config['VS_CODE']) | (df_template['VS_CODE']=='0'))
-            &((df_template['R_CODE']==self.config['R_CODE']) | (df_template['R_CODE']=='0')),:
+            &((df_template['VS_CODE']==self.config['VS_CODE']) | (df_template['VS_CODE']==DEFAULT_SYMBOL))
+            &((df_template['R_CODE']==self.config['R_CODE']) | (df_template['R_CODE']==DEFAULT_SYMBOL)),:
             ].sort_values(by =['VS_CODE','R_CODE'], axis=0, ascending=False)
         template = df_template_selected.iloc[0,3]
 
@@ -590,8 +590,8 @@ class OPNote_IVI(OPNote):
         df_template = self.gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_TEMPLATE_OPNOTE)
         df_template_selected = df_template.loc[ 
             (df_template['OP_TYPE']=='IVI')
-            &((df_template['VS_CODE']==post_data['man']) | (df_template['VS_CODE']=='0'))
-            &((df_template['R_CODE']==self.config['R_CODE']) | (df_template['R_CODE']=='0')), :
+            &((df_template['VS_CODE']==post_data['man']) | (df_template['VS_CODE']==DEFAULT_SYMBOL))
+            &((df_template['R_CODE']==self.config['R_CODE']) | (df_template['R_CODE']==DEFAULT_SYMBOL)), :
             ].sort_values(by =['VS_CODE','R_CODE'], axis=0, ascending=False)
         template = df_template_selected.iloc[0,3]
         post_data['op2data'] = Template(template).substitute(data_gsheet)
@@ -874,7 +874,8 @@ TEST_MODE = False
 UPDATER_OWNER = 'zmh00'
 UPDATER_REPO = 'vghbot'
 UPDATER_FILENAME = 'op'
-UPDATER_VERSION_TAG = 'v2.2'
+UPDATER_VERSION_TAG = 'v2.3'
+DEFAULT_SYMBOL = '~'
 
 if __name__ == '__main__':
     if TEST_MODE:
@@ -938,7 +939,7 @@ if __name__ == '__main__':
                 # 讀取config
                 gc = gsheet.GsheetClient()
                 df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_IVI)
-                config.update( df.loc[(df.loc[:,'INDEX'].str.strip()=='0'),:].to_dict('records')[0] ) # IVI直接使用INDEX==0的組套
+                config.update( df.loc[(df.loc[:,'INDEX'].str.strip()==DEFAULT_SYMBOL),:].to_dict('records')[0] ) # IVI直接使用INDEX==DEFAULT_SYMBOL的組套
 
                 # 自動下載排程
                 webclient, ivi_date = IVI_schedule_download(config=config, gclient=gc)
