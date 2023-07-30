@@ -14,6 +14,7 @@ import datetime
 
 from pathlib import Path
 import gsheet
+import updater_cmd
 
 
 # ==== 基本操作架構
@@ -2028,6 +2029,12 @@ def main():
 TEST_MODE = False
 CONFIG = {}
 
+UPDATER_OWNER = 'zmh00'
+UPDATER_REPO = 'vghbot'
+UPDATER_FILENAME = 'opd'
+UPDATER_VERSION_TAG = 'v2.3'
+
+
 gc = gsheet.GsheetClient()
 CONFIG.update(gc.get_col_dict(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_CONFIG))
 CONFIG['DEFAULT'] = CONFIG['DEFAULT'][0]
@@ -2038,6 +2045,10 @@ auto.uiautomation.DEBUG_SEARCH_TIME = TEST_MODE
 
 if __name__ == '__main__':
     if TEST_MODE == False:
+        u = updater_cmd.Updater_github(UPDATER_OWNER, UPDATER_REPO, UPDATER_FILENAME, UPDATER_VERSION_TAG)
+        if u.start() == False:
+            sys.exit()
+        
         if auto.IsUserAnAdmin():
             main()
         else:
