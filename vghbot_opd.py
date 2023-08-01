@@ -1071,6 +1071,10 @@ def drug_add(drug_list):
         added_list = []
         # 藥物修改window
         window_altermed = auto.WindowControl(searchDepth=1, AutomationId="dlgAlterMed")
+        window_altermed = window_search(window_altermed)
+        if window_altermed is None:
+            auto.Logger.WriteLine("No window dlgAlterMed", auto.ConsoleColor.Red)
+            return False
         datagrid = window_altermed.TableControl(searchDepth=1, Name="DataGridView")
         for drug in drug_list:
             res = datagrid_search(drug['name'], datagrid, '藥名', skip=drug['same_index'], only_one=True)
@@ -1108,6 +1112,10 @@ def drug_delete(drug_list):
         deleted_list = []
         # 藥物修改window
         window_altermed = auto.WindowControl(searchDepth=1, AutomationId="dlgAlterMed")
+        window_altermed = window_search(window_altermed)
+        if window_altermed is None:
+            auto.Logger.WriteLine("No window dlgAlterMed", auto.ConsoleColor.Red)
+            return False
         datagrid = window_altermed.TableControl(searchDepth=1, Name="DataGridView")
         if datagrid.Exists():
             # 藥物編輯視窗內的datagrid需要先點擊一下後再重新抓一次datagrid才不會出現"資料列 -1"錯誤
@@ -1171,6 +1179,10 @@ def drug_delete(drug_list):
 def drug_modify(drug_list):
     try:
         window_altermed = auto.WindowControl(searchDepth=1, AutomationId="dlgAlterMed")
+        window_altermed = window_search(window_altermed)
+        if window_altermed is None:
+            auto.Logger.WriteLine("No window dlgAlterMed", auto.ConsoleColor.Red)
+            return False
         
         # 修改藥物頻次
         for drug in drug_list:
