@@ -17,6 +17,9 @@ import gsheet
 import updater_cmd
 
 
+# pyinstaller
+# pyinstaller --paths ".\.venv-opd\Lib\site-packages\uiautomation\bin" -F vghbot_opd.py 
+
 # ==== 基本操作架構
 
 def process_exists(process_name):
@@ -1897,83 +1900,106 @@ def main():
         if mode.strip() not in ['1','2','0']:
             auto.Logger.WriteLine(f"WRONG MODE INPUT", auto.ConsoleColor.Red)
         elif mode.strip() == '1':
-            # 輸入要操作OPD系統的帳密
-            dr_code = input("Please enter the short code of account (Ex:4123): ")
-            login_id, login_psw = gsheet_acc(dr_code)
-            if login_id is None or login_psw is None:
-                login_id, login_psw = get_id_psw()
-                dr_code = login_id[3:7]
-                
-            # 使用者輸入: 獲取刀表+日期模式
-            config_schedule = gsheet_config_surgery(dr_code)
-            date = get_date_today(config_schedule['OPD_DATE_MODE'])
-            df = gsheet_schedule_cata(config_schedule)
-
-            # 開啟門診程式
-            login(login_id, login_psw, CONFIG['SECTION_CATA'][0], CONFIG['ROOM_CATA'][0])
-
-            # 將所有病歷號加入非常態掛號
-            hisno_list = df[config_schedule['COL_HISNO']].to_list()
-            main_appointment(hisno_list)
-            
-            # 取得已有暫存list => 之後處理部分會跳過
-            exclude_hisno_list = main_excluded_hisno_list(hisno_list)
-            
-            # 逐一病人處理
-            df.set_index(keys=config_schedule['COL_HISNO'], inplace=True)
-            for hisno in hisno_list:
-                # 跳過已有暫存者
-                if hisno in exclude_hisno_list:
-                    auto.Logger.WriteLine(f"Already saved: {hisno}", auto.ConsoleColor.Yellow)
-                    continue
-                
-                # ditto
-                res = main_ditto(hisno)
-                if res == False:
-                    continue
-
-                # 選擇phaco模式
-                if df.loc[hisno, config_schedule['COL_LENSX']].strip() == '': # 沒有選擇lensx
-                    package_open(index = 31)
-                elif df.loc[hisno, config_schedule['COL_LENSX']].strip().lower() == 'lensx':
-                    package_open(index = 32)
+            gc = gsheet.GsheetClient()
+            df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_SURGERY) # 讀取config
+            while True:
+                selected_col = ['INDEX','VS_CODE','SPREADSHEET','WORKSHEET']
+                selected_df = df.loc[:, selected_col]
+                selected_df.index +=1 # 讓index從1開始方便選擇
+                selected_df.rename(columns={'INDEX':'組套名'}, inplace=True) # rename column
+                # 印出現有組套讓使用者選擇
+                print("\n=========================")
+                print(selected_df) 
+                print("=========================")
+                selection = input("請選擇以上profile(0是退回): ").strip()
+                if selection == '0': # 等於0 => 退到上一層
+                    break
                 else:
-                    auto.Logger.WriteLine(f"Lensx資訊辨識問題({df.loc[hisno,config_schedule['COL_LENSX']].strip()}) 先以NHI組套處理", auto.ConsoleColor.Red)
-                    package_open(index = 31)
-                
-                # 取得側別資訊
-                side = gsheet_schedule_side(df_schedule=df, config_schedule=config_schedule, hisno=hisno)
+                    if int(selection) not in selected_df.index:
+                        auto.Logger.WriteLine(f"WRONG PROFILE INPUT", auto.ConsoleColor.Red)
+                    else:
+                        selected_profile = selected_df.loc[int(selection),:].to_dict()
+                        if selected_profile['VS_CODE'] == CONFIG['DEFAULT']:
+                            dr_code = input("Using default config...please enter the short code of VS (Ex:4123): ")
+                        else:
+                            dr_code = selected_profile['VS_CODE']
 
-                # 在Subject框內輸入手術資訊 => 組合手術資訊
-                diagnosis = diagnosis_cata(df_schedule=df, config_schedule=config_schedule, hisno=hisno, side=side, date=date)
-                set_S(diagnosis)
+                        # 載入要操作OPD系統的帳密
+                        login_id, login_psw = gsheet_acc(dr_code)
+                        if login_id is None or login_psw is None:
+                            login_id, login_psw = get_id_psw()
+                            dr_code = login_id[3:7]
+                            
+                        # 使用者輸入: 獲取刀表+日期模式
+                        config_schedule = gsheet_config_surgery(dr_code)
+                        date = get_date_today(config_schedule['OPD_DATE_MODE'])
+                        df = gsheet_schedule_cata(config_schedule)
 
-                # 取得刀表iol資訊
-                iol = df.loc[hisno, config_schedule['COL_IOL']].strip()
-                iol_search_term = gsheet_iol(iol) # 尋找刀表IOL資訊的正式搜尋名稱
-                if iol_search_term is None:
-                    auto.Logger.WriteLine(f"無此IOL({iol})登錄", auto.ConsoleColor.Red)
-                    continue
+                        # 開啟門診程式
+                        login(login_id, login_psw, CONFIG['SECTION_CATA'][0], CONFIG['ROOM_CATA'][0])
 
-                # 取得該DOC常用OVD
-                ovd = gsheet_ovd(dr_code)
-                
-                # 打開package
-                if iol_search_term in CONFIG['NHI_IOL']:
-                    package_open(index=29)  # NHI IOL
-                else:
-                    package_open(index=30)  # SP IOL
-                # IOL和OVD package設定
-                package_iol_ovd(iol=iol_search_term, ovd=ovd)
-                # 修改order的side
-                order_modify_side(side)
-                
-                # 處理藥物
-                drug_list = gsheet_drug(dr_code, side)
-                drug(drug_list)
+                        # 將所有病歷號加入非常態掛號
+                        hisno_list = df[config_schedule['COL_HISNO']].to_list()
+                        main_appointment(hisno_list)
+                        
+                        # 取得已有暫存list => 之後處理部分會跳過
+                        exclude_hisno_list = main_excluded_hisno_list(hisno_list)
+                        
+                        # 逐一病人處理
+                        df.set_index(keys=config_schedule['COL_HISNO'], inplace=True)
+                        for hisno in hisno_list:
+                            # 跳過已有暫存者
+                            if hisno in exclude_hisno_list:
+                                auto.Logger.WriteLine(f"Already saved: {hisno}", auto.ConsoleColor.Yellow)
+                                continue
+                            
+                            # ditto
+                            res = main_ditto(hisno)
+                            if res == False:
+                                continue
 
-                # 暫存退出
-                soap_save()
+                            # 選擇phaco模式
+                            if df.loc[hisno, config_schedule['COL_LENSX']].strip() == '': # 沒有選擇lensx
+                                package_open(index = 31)
+                            elif df.loc[hisno, config_schedule['COL_LENSX']].strip().lower() == 'lensx':
+                                package_open(index = 32)
+                            else:
+                                auto.Logger.WriteLine(f"Lensx資訊辨識問題({df.loc[hisno,config_schedule['COL_LENSX']].strip()}) 先以NHI組套處理", auto.ConsoleColor.Red)
+                                package_open(index = 31)
+                            
+                            # 取得側別資訊
+                            side = gsheet_schedule_side(df_schedule=df, config_schedule=config_schedule, hisno=hisno)
+
+                            # 在Subject框內輸入手術資訊 => 組合手術資訊
+                            diagnosis = diagnosis_cata(df_schedule=df, config_schedule=config_schedule, hisno=hisno, side=side, date=date)
+                            set_S(diagnosis)
+
+                            # 取得刀表iol資訊
+                            iol = df.loc[hisno, config_schedule['COL_IOL']].strip()
+                            iol_search_term = gsheet_iol(iol) # 尋找刀表IOL資訊的正式搜尋名稱
+                            if iol_search_term is None:
+                                auto.Logger.WriteLine(f"無此IOL({iol})登錄", auto.ConsoleColor.Red)
+                                continue
+
+                            # 取得該DOC常用OVD
+                            ovd = gsheet_ovd(dr_code)
+                            
+                            # 打開package
+                            if iol_search_term in CONFIG['NHI_IOL']:
+                                package_open(index=29)  # NHI IOL
+                            else:
+                                package_open(index=30)  # SP IOL
+                            # IOL和OVD package設定
+                            package_iol_ovd(iol=iol_search_term, ovd=ovd)
+                            # 修改order的side
+                            order_modify_side(side)
+                            
+                            # 處理藥物
+                            drug_list = gsheet_drug(dr_code, side)
+                            drug(drug_list)
+
+                            # 暫存退出
+                            soap_save()
         
         elif mode.strip() == '2': # IVI  # FIXME 有些函數尚未更新
             # 輸入要操作OPD系統的帳密
@@ -2032,7 +2058,7 @@ CONFIG = {}
 UPDATER_OWNER = 'zmh00'
 UPDATER_REPO = 'vghbot'
 UPDATER_FILENAME = 'opd'
-UPDATER_VERSION_TAG = 'v2.3'
+UPDATER_VERSION_TAG = 'v2.4'
 
 
 gc = gsheet.GsheetClient()
