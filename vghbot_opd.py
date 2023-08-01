@@ -1918,11 +1918,11 @@ def main():
                     if int(selection) not in selected_df.index:
                         auto.Logger.WriteLine(f"WRONG PROFILE INPUT", auto.ConsoleColor.Red)
                     else:
-                        selected_profile = selected_df.loc[int(selection),:].to_dict()
-                        if selected_profile['VS_CODE'] == CONFIG['DEFAULT']:
+                        config_schedule = df.loc[int(selection)-1,:].to_dict() # 讀取刀表設定檔
+                        if config_schedule['VS_CODE'] == CONFIG['DEFAULT']:
                             dr_code = input("Using default config...please enter the short code of VS (Ex:4123): ")
                         else:
-                            dr_code = selected_profile['VS_CODE']
+                            dr_code = config_schedule['VS_CODE']
 
                         # 載入要操作OPD系統的帳密
                         login_id, login_psw = gsheet_acc(dr_code)
@@ -1930,8 +1930,7 @@ def main():
                             login_id, login_psw = get_id_psw()
                             dr_code = login_id[3:7]
                             
-                        # 使用者輸入: 獲取刀表+日期模式
-                        config_schedule = gsheet_config_surgery(dr_code)
+                        # 獲取刀表內容+日期模式
                         date = get_date_today(config_schedule['OPD_DATE_MODE'])
                         df = gsheet_schedule_cata(config_schedule)
 
@@ -2080,8 +2079,8 @@ if __name__ == '__main__':
         else:
             print('RunScriptAsAdmin', sys.executable, sys.argv)
             auto.RunScriptAsAdmin(sys.argv)
-    # else: # FIXME
-    #     main()
+    else: 
+        main()
 
 
 # OLD MAIN
