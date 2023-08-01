@@ -874,7 +874,7 @@ TEST_MODE = False
 UPDATER_OWNER = 'zmh00'
 UPDATER_REPO = 'vghbot'
 UPDATER_FILENAME = 'op'
-UPDATER_VERSION_TAG = 'v2.3'
+UPDATER_VERSION_TAG = 'v2.4'
 DEFAULT_SYMBOL = '~'
 
 if __name__ == '__main__':
@@ -926,6 +926,8 @@ if __name__ == '__main__':
 
                             # 將選擇的組套匯入config
                             config.update( df.loc[int(selection)-1,:].to_dict() )
+                            if config['VS_CODE'] == DEFAULT_SYMBOL:
+                                config['VS_CODE'] = input("請輸入VS簡碼(Ex:4123): ")
                             OPNote_SURGERY(webclient, config)
                         else:
                             print("!!選擇錯誤!!\n")
