@@ -1083,7 +1083,10 @@ def drug_add(drug_list):
         
         if TEST_MODE:
             auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|Added List:{added_list}", auto.ConsoleColor.Yellow)
-
+        if len(added_list) == 0:
+            auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|No drugs should be added", auto.ConsoleColor.Yellow)
+            return True
+        
         # 點擊加藥
         window_altermed.ButtonControl(searchDepth=1, AutomationId="btnDrugList").GetInvokePattern().Invoke()
         # 進入druglist window
@@ -1912,9 +1915,9 @@ def main():
         if mode.strip() not in ['1','2','0']:
             auto.Logger.WriteLine(f"WRONG MODE INPUT", auto.ConsoleColor.Red)
         elif mode.strip() == '1':
-            gc = gsheet.GsheetClient()
-            df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_SURGERY) # 讀取config
             while True:
+                gc = gsheet.GsheetClient()
+                df = gc.get_df(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_SURGERY) # 讀取config
                 selected_col = ['INDEX','VS_CODE','SPREADSHEET','WORKSHEET']
                 selected_df = df.loc[:, selected_col]
                 selected_df.index +=1 # 讓index從1開始方便選擇
@@ -2063,7 +2066,7 @@ def main():
                 soap_save()
 
 
-TEST_MODE = False
+TEST_MODE = True
 CONFIG = {}
 
 UPDATER_OWNER = 'zmh00'
