@@ -27,7 +27,7 @@ class GsheetClient:
         sa_files = list(p.glob(SA_FILENAME_REGEX)) # 尋找符合REGEX檔案
         
         try:
-            if service_account_json is not None:
+            if service_account_json is not None and service_account_json.strip()!='':
                 self.client = pygsheets.authorize(service_account_json=service_account_json)
             elif service_account_env_var is not None:
                 self.client = pygsheets.authorize(service_account_env_var=service_account_env_var)
