@@ -16,12 +16,9 @@ from pathlib import Path
 import gsheet
 import updater_cmd
 
-
-# pyinstaller
 # pyinstaller --paths ".\.venv-opd\Lib\site-packages\uiautomation\bin" -F vghbot_opd.py 
 
 # ==== 基本操作架構
-
 def process_exists(process_name):
     '''
     Check if a program (based on its name) is running
@@ -333,7 +330,6 @@ def datagrid_values(datagrid, column_name=None, retry=5):
     Input: datagrid, column_name=None, retry=5 
     指定datagrid control並且取得內部所有values
     (資料列需要有'；'才會被收錄且會將(null)轉成'')
-    # TODO: 未來考慮需不需要retry section?
     '''
     # 處理datagrid下完全沒有項目 => 回傳空list
     children = datagrid.GetChildren()
@@ -345,8 +341,8 @@ def datagrid_values(datagrid, column_name=None, retry=5):
     while (retry > 0):
         children = datagrid.GetChildren()
         if children[-1].Name == '資料列 -1':
-            auto.Logger.WriteLine("Datagrid retrieved failed", auto.ConsoleColor.Red)
-            datagrid.Refind()  # TODO 測試有效嗎? 可能要TopLevelControl那個level refind | 可以使用control.GetTopLevelControl()還是應該考慮傳進該control的top level
+            auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|Datagrid retrieved failed", auto.ConsoleColor.Red)
+            datagrid.Refind()
             retry = retry - 1
             continue
         else:
@@ -397,14 +393,13 @@ def datagrid_search(search_text: list, datagrid, column_name=None, retry=5, only
     
     target_list = []
 
-    # FIXME 重新整理有效嗎? 如果沒有children似乎沒處理
     # 目前是針對datagrid去獲取children(row Control) => 如果children資料異常就會重新整理
     # 目前有時候會出現datagrid.Getchildren後會取到"資料列-1" => 並沒有這行，導致後續無法操作，視窗.refind()一次就有機會正常
     while (retry > 0):
         children = datagrid.GetChildren()
         if children[-1].Name == '資料列 -1': # 資料獲取有問題
             auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|Datagrid retrieved failed", auto.ConsoleColor.Red)
-            datagrid.Refind()  # TODO 測試有效嗎? 可能要TopLevelControl那個level refind
+            datagrid.Refind()
             retry = retry - 1
             continue
         else:
@@ -500,7 +495,7 @@ def click_retry(control, topwindow = None, retry=5, doubleclick=False):
     return False # 如果沒有成功點擊返回即return False
 
 
-def click_datagrid(datagrid, target_list:list, doubleclick=False): # FIXME pop的位置怪怪的
+def click_datagrid(datagrid, target_list:list, doubleclick=False):
     '''
     能在datagrid中點擊項目並使用scroll button
     成功完成回傳True, 失敗會回傳沒有點到的target_list
@@ -535,7 +530,7 @@ def click_datagrid(datagrid, target_list:list, doubleclick=False): # FIXME pop�
         for t in target_list:
             t.SetFocus()
             if click_blockinput(t, doubleclick=doubleclick):
-                time.sleep(0.5)
+                time.sleep(0.3)
                 remaining_target_list.remove(t)
         if len(remaining_target_list)!=0:
             auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|ITEM NOT FOUND:{[j.Name for j in remaining_target_list]}", auto.ConsoleColor.Red)
@@ -551,7 +546,7 @@ def get_patient_data():
             'hisno': l[0],
             'name': l[1],
             'id': l[6], 
-            'charge': l[5],
+            'identity': l[5],
             'birthday': l[4][1:-1],
             'age': l[3][:2]
         }
@@ -595,19 +590,6 @@ def login_all(account: str, password: str, section_id: str, room_id: str): # TOD
     window_login = auto.WindowControl(AutomationId="frmDCRSignOn", searchDepth=1)
     window_pending(CONFIG['PROCESS_ID'], pending_control=window_login, retry=20)
 
-    # TODO 測試完可淘汰
-    # login_window = window_search(login_window, -1)
-    # if login_window is not None:
-    #     auto.Logger.WriteLine("Finished: Loading OPD system", auto.ConsoleColor.Yellow)
-    # else:
-    #     auto.Logger.WriteLine("Failed: Loading OPD system", auto.ConsoleColor.Red)
-    #     return False
-
-    # # 跳出略過按鈕
-    # msg = login_window.ButtonControl(SubName="略過", Depth=2)
-    # msg.GetInvokePattern().Invoke()
-    # TODO 測試完可淘汰
-
     # 填入開診資料
     acc = window_login.EditControl(AutomationId="txtSignOnID", Depth=1)
     acc.GetValuePattern().SetValue(account)
@@ -628,55 +610,6 @@ def login_all(account: str, password: str, section_id: str, room_id: str): # TOD
 
     window_main = auto.WindowControl(AutomationId="frmPatList", searchDepth=1)
     window_pending(CONFIG['PROCESS_ID'], pending_control=window_main, retry=8)
-
-    # TODO 測試後可淘汰
-    # # 處理登入非該診醫師的警告
-    # warning_msg = auto.WindowControl(searchDepth=2, AutomationId="FlaxibleMessage")
-    # warning_msg = window_search(warning_msg,1)
-    # if warning_msg is not None:
-    #     button = warning_msg.ButtonControl(Depth=2, AutomationId="btnOK")
-    #     if button.Exists():
-    #         # button.GetInvokePattern().Invoke() # TODO 需要測試會不會卡住API
-    #         click_retry(button, warning_msg)
-    #     else:
-    #         auto.Logger.WriteLine("No OK_Button under FlaxibleMessage", auto.ConsoleColor.Red)
-    # else:
-    #     auto.Logger.WriteLine("No FlaxibleMessage", auto.ConsoleColor.Red)
-
-    # # 醫師待辦事項通知 => 可window.close()
-    # warning_msg = auto.WindowControl(AutomationId="dlgMessageCenter", searchDepth=2)
-    # warning_msg = window_search(warning_msg,1)
-    # if warning_msg is not None:
-    #     warning_msg.GetWindowPattern().Close()
-    # else:
-    #     auto.Logger.WriteLine("No dlgMessageCenter", auto.ConsoleColor.Red)
-
-    # # 醫事卡非登入醫師本人通知
-    # warning_msg = auto.WindowControl(AutomationId="dlgWarMessage", searchDepth=2)
-    # warning_msg = window_search(warning_msg,1)
-    # if warning_msg is not None:
-    #     warning_msg.GetWindowPattern().Close()
-    # else:
-    #     auto.Logger.WriteLine("No dlgWarMessage", auto.ConsoleColor.Red)
-    # TODO 測試後可淘汰
-
-    # 以下目標一次處理所有dialog(COVID警告通知+此診目前無掛號)，因為dialog不是獨立的，在walkatree內會有階層關係，但不是每一個都有enabled可以被操作，要按照順序處理
-    # 此診目前無掛號 會是第一個跳出的dialog，但其他訊息後續出現後，此dialog會被設成not enabled => 導致不能被選中關閉
-    # time.sleep(0.5)
-    # auto.SendKeys("{SPACE}" * 3)
-    # auto.SendKeys("{SPACE}" * 3)
-
-    # # COVID警告通知 => 可close
-    # warning_msg = auto.WindowControl(Name="訊息", searchDepth=2)
-    # warning_msg = search_window(warning_msg,1)
-    # if warning_msg is not None:
-    #     warning_msg.GetWindowPattern().Close()
-    # else:
-    #     auto.Logger.WriteLine("No 訊息", auto.ConsoleColor.Red)
-    
-    # 處理警告:(SOAP的填答通知、此診目前無掛號) 
-    # TODO 取得該process ID下的top level window 去送space
-    # TODO 用一個thread持續監測新的window且同樣process ID，去關掉這些window? => 可以先嘗試列印出來看可不可以多線程運行
 
 
 def login_change_opd(account: str, password: str, section_id: str, room_id: str):
@@ -711,8 +644,7 @@ def login_change_opd(account: str, password: str, section_id: str, room_id: str)
         btn = window_relog.ButtonControl(searchDepth=1, AutomationId="btnSignOn")
         click_retry(btn)
 
-        # FIXME 這邊似乎會卡住而造成後續API出問題但動一下滑鼠似乎能解決????
-        window_main.Click() # FIXME 測試看看有沒有用
+        window_main.Click() # TODO 測試看看有沒有用， 這邊似乎會卡住而造成後續API出問題但動一下滑鼠似乎能解決????
         time.sleep(1)
         # 以下嘗試都失敗
         # btn.GetInvokePattern().Invoke()
@@ -733,7 +665,7 @@ def login_change_opd(account: str, password: str, section_id: str, room_id: str)
     # auto.SendKeys("{SPACE}" * 3)
     
 
-def main_appointment(hisno_list: list[str]):
+def main_appointment(hisno_list: list ):
     if type(hisno_list) is not list:
         hisno_list = [hisno_list]
     else:
@@ -747,60 +679,72 @@ def main_appointment(hisno_list: list[str]):
     patient_list = datagrid_values(datagrid=datagrid_patient, column_name='病歷號')
 
     for hisno in hisno_list:
-        if hisno in patient_list: # 已經有病歷號了
-            auto.Logger.WriteLine(f"Appointment exists: {hisno}", auto.ConsoleColor.Yellow)
-            continue
+        try:
+            if hisno in patient_list: # 已經有病歷號了
+                auto.Logger.WriteLine(f"Appointment exists: {hisno}", auto.ConsoleColor.Yellow)
+                continue
 
-        c_menubar = window_main.MenuBarControl(searchDepth=1, AutomationId="MenuStrip1")
-        c_appointment = c_menubar.MenuItemControl(searchDepth=1, SubName='非常態掛號')
-        click_retry(c_appointment) #為了防止popping window遇到invoke pattern會卡住
+            c_menubar = window_main.MenuBarControl(searchDepth=1, AutomationId="MenuStrip1")
+            c_appointment = c_menubar.MenuItemControl(searchDepth=1, SubName='非常態掛號')
+            click_retry(c_appointment) #為了防止popping window遇到invoke pattern會卡住
 
-        # 輸入資料
-        window_appointment = auto.WindowControl(searchDepth=2, AutomationId="dlgVIPRegInput")
-        window_appointment = window_search(window_appointment)
-        if window_appointment is None:
-            auto.Logger.WriteLine("No window dlgVIPRegInput",auto.ConsoleColor.Red)
+            # 輸入資料
+            window_appointment = auto.WindowControl(searchDepth=2, AutomationId="dlgVIPRegInput")
+            window_appointment = window_search(window_appointment)
+            if window_appointment is None:
+                auto.Logger.WriteLine("No window dlgVIPRegInput",auto.ConsoleColor.Red)
+                continue
+            
+            # 找到editcontrol
+            c_appoint_edit = window_appointment.EditControl(searchDepth=1, AutomationId="tbxIDNum")
+            c_appoint_edit.GetValuePattern().SetValue(hisno)
+            # 送出資料
+            c_button_ok = window_appointment.ButtonControl(AutomationId="OK_Button")
+            click_retry(c_button_ok) 
+            #c_button_ok.GetInvokePattern().Invoke() # 如果後續跳出重覆掛號的dialog就會造成這步使用invoke會卡住
+
+            patient_list.append(hisno)
+
+        except Exception as e:
+            auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|{e}", auto.ConsoleColor.Red)
             return False
-        # 找到editcontrol
-        c_appoint_edit = window_appointment.EditControl(searchDepth=1, AutomationId="tbxIDNum")
-        c_appoint_edit.GetValuePattern().SetValue(hisno)
-        # 送出資料
-        c_button_ok = window_appointment.ButtonControl(AutomationId="OK_Button")
-        click_retry(c_button_ok) 
-        #c_button_ok.GetInvokePattern().Invoke() # 如果後續跳出重覆掛號的dialog就會造成這步使用invoke會卡住
 
 
 def main_retrieve(hisno):
     '''
     取暫存功能
     '''
-    window_main = auto.WindowControl(searchDepth=1, SubName='台北榮民總醫院', AutomationId="frmPatList")
-    window_main = window_search(window_main)
-    if window_main is None:
-        auto.Logger.WriteLine("No window frmPatList", auto.ConsoleColor.Red)
+    try:
+        window_main = auto.WindowControl(searchDepth=1, SubName='台北榮民總醫院', AutomationId="frmPatList")
+        window_main = window_search(window_main)
+        if window_main is None:
+            auto.Logger.WriteLine("No window frmPatList", auto.ConsoleColor.Red)
+            return False
+
+        # select病人
+        c_datagrid_patient = window_main.TableControl(searchDepth=1, SubName='DataGridView', AutomationId="dgvPatsList")
+        patient = datagrid_search([hisno], c_datagrid_patient)
+        if len(patient)==0:
+            auto.Logger.WriteLine(f"NOT EXIST PATIENT: {hisno} WHEN RETRIEVE", auto.ConsoleColor.Red)
+            return False
+        else:
+            click_datagrid(c_datagrid_patient, patient)
+        # 按下取暫存按鍵
+        c = window_main.ButtonControl(searchDepth=1, AutomationId="btnPatsTemp")
+        click_retry(c)
+
+        # 等到SOAP出現
+        window_soap = auto.WindowControl(searchDepth=1, AutomationId="frmSoap")
+        window_pending(processId=CONFIG["PROCESS_ID"], pending_control=window_soap, excluded_control=window_main)
+    
+        return True
+    
+    except Exception as e:
+        auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|{e}", auto.ConsoleColor.Red)
         return False
 
-    # select病人
-    c_datagrid_patient = window_main.TableControl(searchDepth=1, SubName='DataGridView', AutomationId="dgvPatsList")
-    patient = datagrid_search([hisno], c_datagrid_patient)
-    if len(patient)==0:
-        auto.Logger.WriteLine(f"NOT EXIST PATIENT: {hisno}", auto.ConsoleColor.Red)
-    else:
-        click_datagrid(c_datagrid_patient, patient)
-    # 按下取暫存按鍵
-    c = window_main.ButtonControl(searchDepth=1, AutomationId="btnPatsTemp")
-    click_retry(c)
 
-    # 處理TOCC警告 => 這應該是隨機彈窗 會造成invoke使用後錯誤
-    window_tocc = auto.WindowControl(searchDepth=2, AutomationId="dlgNewTOCC")
-    if window_tocc.Exists(maxSearchSeconds=2, searchIntervalSeconds=0.2):
-        window_tocc.CheckBoxControl(Depth=2, AutomationId="ckbAllNo").GetTogglePattern().Toggle()
-        window_tocc.ButtonControl(Depth=2, AutomationId="btnOK").GetInvokePattern().Invoke()
-    else:
-        auto.Logger.WriteLine(f"NOT EXIST: window_tocc", auto.ConsoleColor.Yellow)
-
-
-def main_ditto(hisno: str): # TODO 改成hisno_list版本
+def main_ditto(hisno: str):
     '''
     Ditto功能
     '''
@@ -815,59 +759,18 @@ def main_ditto(hisno: str): # TODO 改成hisno_list版本
     datagrid_patient = window_main.TableControl(searchDepth=1, SubName='DataGridView', AutomationId="dgvPatsList")
     patient = datagrid_search([hisno], datagrid_patient)
     if len(patient)==0:
-        auto.Logger.WriteLine(f"NOT EXIST PATIENT: {hisno}", auto.ConsoleColor.Red)
+        auto.Logger.WriteLine(f"NOT FOUND PATIENT: {hisno} WHEN DITTO", auto.ConsoleColor.Red)
+        return False
     else:
         click_datagrid(datagrid_patient, patient, doubleclick=True)
     # 如果沒有點到該病人單純用select最後跳出的ditto資料會有錯誤
     # 對datagrid的病人資料使用doubleclick 也有ditto效果，另外也可以單點一下+按ditto按鈕
-    # 按下ditto按鍵
-    # c_ditto = window_main.ButtonControl(searchDepth=1, SubName='DITTO', AutomationId="btnPatsDITTO")
-    # block_click(c_ditto)
-    
-    # # FIXME
-    # # 處理TOCC警告 => 這應該是隨機彈窗 會造成invoke使用後錯誤
-    # window_tocc = auto.WindowControl(searchDepth=2, AutomationId="dlgNewTOCC")
-    # if window_tocc.Exists(maxSearchSeconds=2, searchIntervalSeconds=0.2):
-    #     window_tocc.CheckBoxControl(Depth=2, AutomationId="ckbAllNo").GetTogglePattern().Toggle()
-    #     window_tocc.ButtonControl(Depth=2, AutomationId="btnOK").GetInvokePattern().Invoke()
-    # else:
-    #     auto.Logger.WriteLine(f"NOT EXIST: window_tocc", auto.ConsoleColor.Yellow)
-
-    # # 健康行為登錄
-    # window_dlg = auto.WindowControl(searchDepth=2, AutomationId="dlgSMOBET")
-    # if window_dlg.Exists(maxSearchSeconds=2, searchIntervalSeconds=0.2):
-    #     window_dlg.GetWindowPattern().Close()
-    # else:
-    #     auto.Logger.WriteLine(f"NOT EXIST: dlgSMOBET", auto.ConsoleColor.Yellow)
-
-    # # 處理一堆警告視窗 => #TODO 我沒跳出這個 要保留彈性或是使用鍵盤處理?
-    # window_warn = auto.WindowControl(searchDepth=2, AutomationId="dlgWarMessage")
-    # if window_warn.Exists(maxSearchSeconds=2, searchIntervalSeconds=0.2):
-    #     c_button_ok = window_warn.ButtonControl(searchDepth=1, AutomationId="OK_Button", SubName="繼續")
-    #     c_button_ok.GetInvokePattern().Invoke()
-    # else:
-    #     auto.Logger.WriteLine(f"NOT EXIST: window_warn", auto.ConsoleColor.Yellow)
-    # # FIXME
     
     
     # TODO 以下拆開成另一個函數? 這樣可以幫助追蹤進度?
     # 進到ditto視窗
     window_ditto = auto.WindowControl(searchDepth=1, AutomationId="frmDitto")
     window_pending(CONFIG['PROCESS_ID'], pending_control=window_ditto, excluded_control=window_main) # FIXME
-    
-    # TODO 可刪除
-    # window_ditto = window_search(window_ditto)
-    # if window_ditto is None:
-    #     auto.Logger.WriteLine("No window frmDitto", auto.ConsoleColor.Red)
-    #     return False
-
-    # TODO 可刪除
-    # # 藥物過敏的視窗是在ditto視窗下
-    # window_allergy = window_ditto.WindowControl(searchDepth=1, AutomationId="dlgDrugAllergyDetailAndEdit")
-    # if window_allergy.Exists(maxSearchSeconds=1.0, searchIntervalSeconds=0.2):
-    #     window_allergy.ButtonControl(Depth=3, SubName='無需更新', AutomationId="Button1").GetInvokePattern().Invoke()
-    # else:
-    #     auto.Logger.WriteLine(f"NOT EXIST: window_allergy", auto.ConsoleColor.Yellow)
 
     # 進去選擇最近的一次眼科紀錄010, 110, 0PH, 1PH, 0C1,...?
     c_datagrid_ditto = window_ditto.TableControl(Depth=3, AutomationId="dgvPatDtoList")
@@ -1051,7 +954,7 @@ def drug(drug_list):
     # 走藥物修改再加藥防止沒有診斷時不能加藥
     window_soap.ButtonControl(searchDepth=1, AutomationId="btnSoapAlterMed").GetInvokePattern().Invoke()
     
-    drug_delete(drug_list)
+    drug_delete(drug_list = drug_list)
     for i in range(int(len(drug_list)/4)+1):
         if i == int(len(drug_list)/4):
             split_drug_list = drug_list[i*4:]
@@ -1110,7 +1013,11 @@ def drug_add(drug_list):
         auto.Logger.WriteLine(f"{inspect.currentframe().f_code.co_name}|{e}", auto.ConsoleColor.Red)
         return False
 
-def drug_delete(drug_list):
+def drug_delete(drug_list = [], deleted_drug_list = []):
+    '''
+    Compare the input drug_list with the existing drug items and remove the ones that are not in drug_list
+
+    '''
     try:
         deleted_list = []
         # 藥物修改window
@@ -1153,12 +1060,18 @@ def drug_delete(drug_list):
         for row in children:
             if ('資料列' in row.Name) and (row.Name != '上方資料列') : # 有資料的列才做判斷
                 match = row.GetLegacyIAccessiblePattern().Value.lower().replace('(null)', '').split(';')[column_index]
-                found = False
+                # drug_list內有的要留下來
+                exist_in_drug_list = False
                 for drug in drug_list:
                     if drug['name'].lower() in match: # TODO 匹配過的是否應該後續匹配剔除 => 這樣可以確保藥名相同的數量是和drug_list一致的
-                        found = True
+                        exist_in_drug_list = True
                         break
-                if found == False:
+                # deleted_drug_list內有的要刪除
+                for drug in deleted_drug_list:
+                    if drug['name'].lower() in match:
+                        exist_in_deleted_drug_list = True
+                        break
+                if exist_in_drug_list == False or exist_in_deleted_drug_list == True:
                     deleted_list.append(row)
         
         if TEST_MODE:
@@ -1219,7 +1132,7 @@ def select_ivi(charge): # TODO
     charge = charge.upper()
     if charge == 'SP-A':
         data = get_patient_data()
-        if '榮' in data['charge'] or '將' in data['charge']: # 榮民選擇
+        if '榮' in data['identity'] or '將' in data['identity']: # 榮民選擇
             package_open(index=33)
         else:
             package_open(index=34)
@@ -1421,7 +1334,13 @@ def soap_save(backtolist = True):
     
     if backtolist:
         window_soap.SendKeys('{Ctrl}s', waitTime=0.05)
-        # TODO 要確認有跳出?
+        window_main = auto.WindowControl(AutomationId="frmPatList", searchDepth=1)
+        window_main = auto.WindowControl(searchDepth=1, AutomationId="frmPatList")
+        window_main = window_search(window_main)
+        if window_main is None:
+            auto.Logger.WriteLine("No window frmPatList", auto.ConsoleColor.Red)
+            return False
+        return True
     else:
         pane = window_soap.PaneControl(searchDepth=1, AutomationId="panel_bottom")
         button = pane.ButtonControl(searchDepth=1, AutomationId="btnSoapTempSave")
@@ -1430,6 +1349,7 @@ def soap_save(backtolist = True):
         message = window_soap.WindowControl(searchDepth=1, SubName='提示訊息')
         message = window_search(message)
         message.GetWindowPattern().Close()
+        return True
 
 
 def procedure_button(mode='ivi'): # FIXME沒辦法使用scroll and click功能
@@ -1570,7 +1490,6 @@ def soap_confirm(mode=0):
 
 
 # ==== Googlespreadsheet 資料擷取與轉換
-
 def gsheet_acc(dr_code: str):
     '''
     Input: short code of account. Ex:4123
@@ -1590,7 +1509,6 @@ def gsheet_acc(dr_code: str):
     result = selected_df.iloc[0,:].to_dict() #df變成series再輸出成dict
     return result['ACCOUNT'], result['PASSWORD']
     
-
 
 def gsheet_ovd(dr_code: str) -> str:
     '''
@@ -1681,7 +1599,7 @@ def gsheet_drug_to_druglist(df: pandas.DataFrame, side: str):
                 result_copy['same_index'] = i
 
                 if '$' in order: # 處理自費項目
-                    result_copy['charge'] = 'Y' # FIXME 需要驗證這樣能否使用
+                    result_copy['charge'] = True # FIXME 需要驗證這樣能否使用
                     order = order.replace('$','')
                 if '#' in order: # 處理顆數
                     tmp = order.split('#') 
@@ -2066,7 +1984,7 @@ def main():
                 soap_save()
 
 
-TEST_MODE = True
+TEST_MODE = False
 CONFIG = {}
 
 UPDATER_OWNER = 'zmh00'
@@ -2074,14 +1992,12 @@ UPDATER_REPO = 'vghbot'
 UPDATER_FILENAME = 'opd'
 UPDATER_VERSION_TAG = 'v2.4'
 
-
 gc = gsheet.GsheetClient()
 CONFIG.update(gc.get_col_dict(gsheet.GSHEET_SPREADSHEET, gsheet.GSHEET_WORKSHEET_CONFIG))
 CONFIG['DEFAULT'] = CONFIG['DEFAULT'][0]
 
 auto.uiautomation.SetGlobalSearchTimeout(10)  # 應該使用較長的timeout來防止電腦反應太慢，預設就是10秒
 auto.uiautomation.DEBUG_SEARCH_TIME = TEST_MODE 
-
 
 if __name__ == '__main__':
     if TEST_MODE == False:
@@ -2097,18 +2013,6 @@ if __name__ == '__main__':
     else: 
         main()
 
-
-# OLD MAIN
-# running, pid = process_exists(PROCESS_NAME)
-#     if running:
-#         auto.Logger.WriteLine("OPD program is running", auto.ConsoleColor.Yellow)
-#         with open(JSON_PATH, 'r', encoding='utf-8') as f:
-#             config = json.load(fp=f)
-#             login_change(config['OPD_ACCOUNT'], config['OPD_PASSWORD'], config['MODE']['OP_CATA']['OPD_SECTION'], config['MODE']['OP_CATA']['OPD_ROOM'])
-#     else:
-#         with open(JSON_PATH, 'r', encoding='utf-8') as f:
-#             config = json.load(fp=f)
-#             login(config['OPD_PATH'], config['OPD_ACCOUNT'], config['OPD_PASSWORD'], config['MODE']['OP_CATA']['OPD_SECTION'], config['MODE']['OP_CATA']['OPD_ROOM'])
 
 # HOT KEY
 
