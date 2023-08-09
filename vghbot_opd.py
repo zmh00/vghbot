@@ -1060,8 +1060,10 @@ def drug_delete(drug_list = [], deleted_drug_list = []):
         for row in children:
             if ('資料列' in row.Name) and (row.Name != '上方資料列') : # 有資料的列才做判斷
                 match = row.GetLegacyIAccessiblePattern().Value.lower().replace('(null)', '').split(';')[column_index]
-                # drug_list內有的要留下來
                 exist_in_drug_list = False
+                exist_in_deleted_drug_list = False
+
+                # drug_list內有的要留下來
                 for drug in drug_list:
                     if drug['name'].lower() in match: # TODO 匹配過的是否應該後續匹配剔除 => 這樣可以確保藥名相同的數量是和drug_list一致的
                         exist_in_drug_list = True
