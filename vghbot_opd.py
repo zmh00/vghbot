@@ -1878,6 +1878,10 @@ def main():
                         
                         # 取得已有暫存list => 之後處理部分會跳過
                         exclude_hisno_list = main_excluded_hisno_list(hisno_list)
+                        if len(exclude_hisno_list) > 0:
+                            choice = input("跳過已暫存資料(Enter:是|n:否): ")
+                            if choice.strip().lower() != '':
+                                exclude_hisno_list = []
                         
                         # 逐一病人處理
                         df.set_index(keys=config_schedule['COL_HISNO'], inplace=True)
